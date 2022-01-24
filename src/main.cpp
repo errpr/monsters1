@@ -1,30 +1,39 @@
+#include <cstdio>
 #include "raylib.h"
+#include "sprite_stuff.hpp"
 
 #define SCREEN_WIDTH (800)
 #define SCREEN_HEIGHT (450)
 
 #define WINDOW_TITLE "Window title"
 
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, WINDOW_TITLE);
     SetTargetFPS(60);
 
-    Texture2D texture = LoadTexture(ASSETS_PATH"test.png"); // Check README.md for how this works
+    Texture2D texture = LoadTexture(ASSETS_PATH"0x72_DungeonTilesetII_v1.4.png");
 
+    int animFrame = 0;
+    float animStep = 0.15f;
+    double animTime = GetTime();
     while (!WindowShouldClose())
     {
+        float dt = GetFrameTime();
+        double time = GetTime();
+        if (time - animTime > animStep) {
+            animFrame++;
+            animTime = time;
+        }
         BeginDrawing();
 
-        ClearBackground(RAYWHITE);
+        ClearBackground(GRAY);
 
-        const int texture_x = SCREEN_WIDTH / 2 - texture.width / 2;
-        const int texture_y = SCREEN_HEIGHT / 2 - texture.height / 2;
-        DrawTexture(texture, texture_x, texture_y, WHITE);
-
-        const char* text = "OMG! IT WORKS!";
-        const Vector2 text_size = MeasureTextEx(GetFontDefault(), text, 20, 1);
-        DrawText(text, SCREEN_WIDTH / 2 - text_size.x / 2, texture_y + texture.height + text_size.y + 10, 20, BLACK);
+        Rectangle textureSource = {skelet_run_anim.x, skelet_run_anim.y, skelet_run_anim.width, skelet_run_anim.height};
+        textureSource.x += textureSource.width * (animFrame % skelet_run_anim.frames);
+        Rectangle quad = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, 32, 32};
+        DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
 
         EndDrawing();
     }
