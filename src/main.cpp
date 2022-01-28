@@ -1,32 +1,39 @@
 #include <cstdio>
 #include <cstdlib>
 #include "raylib.h"
+#include <raymath.h>
 #include "sprite_stuff.hpp"
 #include "enemies.hpp"
 
 #define SCREEN_WIDTH (800)
 #define SCREEN_HEIGHT (450)
 
-#define WINDOW_TITLE "Monster survivor"
+#define WINDOW_TITLE "Monsters"
 
-#define MAX_ENEMY_COUNT 100
+#define MAX_ENEMY_COUNT 999
+#define COLLISION_DEBUG
 
 struct EnemyEntities {
     int * enemyInfoId;
     bool * alive;
     Vector2 * position;
-    Vector2 * size;
+    float * size;
     int * hp;
     int * attack;
-    float * headingDegrees;
+    float * speed;
+};
+
+struct Collision {
+    float angle;
+    Vector2 position1;
+    Vector2 position2;
+    Vector2 position3;
+    float size1;
+    float size2;
+    float correctionDistance;
 };
 
 static int lastEnemyId = 0;
-
-double deg2rad( double degrees )
-{
-    return degrees * PI / 180;
-}
 
 int GetNewEnemyId() {
     if (lastEnemyId >= MAX_ENEMY_COUNT) {
@@ -34,22 +41,23 @@ int GetNewEnemyId() {
     }
     return lastEnemyId++;
 }
-static double degrees = 0.0f;
-double randomDegrees() {
-    return degrees;
+
+static float degrees = 230.0f;
+float randomDegrees() {
+//    return degrees;
     int r = GetRandomValue(0, 36000);
-    return ((double)r) / 100.0f;
+    return ((float)r) / 100.0f;
 }
 
-void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLocation) {
+void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLocation, float size, float speed) {
     int enemyId = GetNewEnemyId();
     enemyEntities->enemyInfoId[enemyId] = enemyInfoId;
     enemyEntities->alive[enemyId] = true;
     enemyEntities->position[enemyId] = {spawnLocation.x, spawnLocation.y};
-    enemyEntities->size[enemyId] = {16, 16};
+    enemyEntities->size[enemyId] = size;
     enemyEntities->hp[enemyId] = enemyInfos[enemyInfoId].hp;
     enemyEntities->attack[enemyId] = enemyInfos[enemyInfoId].attack;
-    enemyEntities->headingDegrees[enemyId] = randomDegrees();
+    enemyEntities->speed[enemyId] = speed;
 }
 
 int main(void)
@@ -64,34 +72,47 @@ int main(void)
     double animTime = GetTime();
 
     double spawnTimer = GetTime();
-    float spawnThreshold = 0.1f;
-
-    double sizeIncrementTimer = GetTime();
-    float sizeIncrementThreshold = 1.0f;
-
-    double wanderTimer = GetTime();
-    float wanderThreshold = 2.0f;
+    float spawnThreshold = 0.01f;
 
     EnemyEntities enemyEntities = {
             (int *)malloc(sizeof(int) * MAX_ENEMY_COUNT),
             (bool *)calloc(MAX_ENEMY_COUNT, sizeof(bool)),
             (Vector2 *)malloc(sizeof(Vector2) * MAX_ENEMY_COUNT),
-            (Vector2 *)malloc(sizeof(Vector2) * MAX_ENEMY_COUNT),
+            (float *)malloc(sizeof(float) * MAX_ENEMY_COUNT),
             (int *)malloc(sizeof(int) * MAX_ENEMY_COUNT),
             (int *)malloc(sizeof(int) * MAX_ENEMY_COUNT),
             (float *)malloc(sizeof(float) * MAX_ENEMY_COUNT),
     };
 
+    Vector2 playerPos = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
+
+    int collisionCounter = 0;
+#define MAX_COLLISIONS 100
+    Collision collisions[MAX_COLLISIONS] = {0};
+    bool manualStepping = false;
+    double time = GetTime();
+
     while (!WindowShouldClose())
     {
-        float dt = GetFrameTime();
-        degrees += 1.0f * dt;
-        if (degrees > 360.0f) {
-            degrees = 0.0f;
+        float dt = 0;
+        if (manualStepping) {
+            dt = 0.033;
+            time = time + dt;
+        } else {
+            dt = GetFrameTime();
+            time = GetTime();
         }
 
-        double time = GetTime();
+        if (IsKeyPressed(KEY_F7)) {
+            manualStepping = !manualStepping;
+        } else if (manualStepping && !IsKeyPressed(KEY_F1)) {
+            goto draw;
+        }
 
+        degrees += 2.0 * dt;
+        collisionCounter = 0;
+        for (int i = 0; i < MAX_COLLISIONS; i++)
+            collisions[i] = {0};
         // update animation frame
         if (time - animTime > animStep) {
             animTime = time;
@@ -102,65 +123,94 @@ int main(void)
         // update enemies
         //
 
-        // size increment
-        if (time - sizeIncrementTimer > sizeIncrementThreshold) {
-            sizeIncrementTimer = time;
-            for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
-                enemyEntities.size[i].x++;
-                enemyEntities.size[i].y++;
-            }
-        }
-
-        // change directions
-        if (time - wanderTimer > wanderThreshold) {
-            wanderTimer = time;
-            for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
-                enemyEntities.headingDegrees[i] = randomDegrees();
-            }
-        }
-
-        // move
-        static float enemySpeed = 2.0f;
+        // move & collide
         for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
             if (!enemyEntities.alive[i]) continue;
-            float heading = enemyEntities.headingDegrees[i];
-            Vector2 position = enemyEntities.position[i];
-            float newX = position.x + (cos(deg2rad(heading)) * enemySpeed);
-            float newY = position.y + (sin(deg2rad(heading)) * enemySpeed);
-            bool bounce = false;
-            if (newX > SCREEN_WIDTH - 16) {
-                newX = SCREEN_WIDTH - 16;
-                bounce = true;
-            } else if (newX < 0) {
-                newX = 0;
-                bounce = true;
-            } else if (newY > SCREEN_HEIGHT - 16) {
-                newY = SCREEN_HEIGHT - 16;
-                bounce = true;
-            } else if (newY < 0) {
-                newY = 0;
-                bounce = true;
+            Vector2 newPos = Vector2MoveTowards(enemyEntities.position[i], playerPos, enemyEntities.speed[i]);
+            float size = enemyEntities.size[i];
+
+            bool collision = false;
+            int collisionRuns = 0;
+            do {
+                collision = false;
+                collisionRuns++;
+                float distance = 0;
+                float sumOfRadii = 0;
+                int j = 0;
+                for (; j < MAX_ENEMY_COUNT; j++) {
+                    if (j == i) continue;
+                    if (!enemyEntities.alive[j]) continue;
+                    distance = Vector2Distance(enemyEntities.position[j], newPos);
+                    sumOfRadii = (enemyEntities.size[j] / 2) + (size / 2);
+                    if (distance < sumOfRadii) {
+                        collision = true;
+                        break;
+                    }
+                }
+
+                if (collision) {
+                    Vector2 vecDiff = Vector2Subtract(enemyEntities.position[j], newPos);
+                    float angle = atan2f(vecDiff.y, vecDiff.x);
+                    float originalMoveAngle = Vector2Angle(enemyEntities.position[i], playerPos);
+                    float correctionMoveAmount = (distance - sumOfRadii) * (((float)GetRandomValue(1001, 1100) / 1000));
+
+#ifdef COLLISION_DEBUG
+                    Collision c = Collision{};
+                    c.angle = angle;
+                    c.position1 = {enemyEntities.position[j].x, enemyEntities.position[j].y};
+                    c.position2 = {newPos.x, newPos.y};
+                    c.size1 = enemyEntities.size[j];
+                    c.size2 = size;
+                    c.correctionDistance = correctionMoveAmount;
+#endif
+
+                    newPos.x += cosf(angle) * correctionMoveAmount;
+                    newPos.y += sinf(angle) * correctionMoveAmount;
+
+#ifdef COLLISION_DEBUG
+                    c.position3 = {newPos.x, newPos.y};
+                    collisions[collisionCounter++] = c;
+                    if (collisionCounter >= MAX_COLLISIONS)
+                        collisionCounter = 0;
+#endif
+                }
+            } while (collision && collisionRuns < 20);
+            if (collisionRuns < 20) {
+                enemyEntities.position[i] = newPos;
             }
-            if (bounce) {
-                enemyEntities.headingDegrees[i] = fmod(heading + 180, 360);
+            if (Vector2Distance(newPos, playerPos) < size * 2) {
+                // touch player get dizzy
+                enemyEntities.alive[i] = false;
             }
-            enemyEntities.position[i].x = newX;
-            enemyEntities.position[i].y = newY;
         }
 
         // spawn new enemies
         if (time - spawnTimer > spawnThreshold) {
             spawnTimer = time;
-            int spawnDirectionDegrees = randomDegrees();
+            int spawnDirectionDegrees = randomDegrees() + (((float)GetRandomValue(-200, 200)) / 100.0f);
             Vector2 spawnLocation = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
-            spawnLocation.x += cos(deg2rad(spawnDirectionDegrees)) * 30;
-            spawnLocation.y += sin(deg2rad(spawnDirectionDegrees)) * 30;
-            spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation);
+            spawnLocation.x += cos(spawnDirectionDegrees * DEG2RAD) * 300;
+            spawnLocation.y += sin(spawnDirectionDegrees * DEG2RAD) * 300;
+            float size = 32.0f; //(float)GetRandomValue(16, 64);
+            bool blocked = false;
+            for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
+                if (!enemyEntities.alive[i]) continue;
+                float distance = Vector2Distance(enemyEntities.position[i], spawnLocation);
+                float sumOfRadii = (enemyEntities.size[i] / 2) + (size / 2);
+                if (distance < sumOfRadii) {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked) {
+                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(100, 400) / 100.0f);
+            }
         }
 
         //
         // draw
         //
+        draw:
 
         BeginDrawing();
 
@@ -170,20 +220,32 @@ int main(void)
         for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
             if (enemyEntities.alive[i] == true) {
                 Vector2 pos = enemyEntities.position[i];
-                Vector2 size = enemyEntities.size[i];
+                float size = enemyEntities.size[i];
                 EnemyInfo info = enemyInfos[enemyEntities.enemyInfoId[i]];
-                Rectangle quad = { pos.x, pos.y, size.x, size.y };
+                Rectangle quad = { pos.x, pos.y, size, size };
                 Rectangle textureSource = info.textureSource;
                 textureSource.x += textureSource.width * (animFrame % info.animationFrames);
                 DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
             }
         }
 
-        char strbuf[128] = {};
-        sprintf(strbuf, "Degrees: %0.2f", degrees);
-        DrawText(strbuf, 0, 0, 16, RED);
-        sprintf(strbuf, "Heading X: %0.2f Heading Y: %0.2f", cos(deg2rad(degrees)), sin(deg2rad(degrees)));
-        DrawText(strbuf, 0, 26, 16, RED);
+        // draw collision debug data
+#ifdef COLLISION_DEBUG
+        for (int i = 0; i < MAX_COLLISIONS; i++) {
+            Collision c = collisions[i];
+            if (c.size1 == NULL) continue;
+//            DrawCircle(c.position1.x, c.position1.y, c.size1 / 2, BLUE);
+            DrawCircle(c.position2.x, c.position2.y, c.size2 / 2, RED);
+            DrawCircle(c.position3.x, c.position3.y, c.size2 / 2, GREEN);
+            DrawLine(c.position2.x, c.position2.y, c.position3.x, c.position3.y, PURPLE);
+        }
+#endif
+
+//        char strbuf[128] = {};
+//        sprintf(strbuf, "Degrees: %0.2f", degrees);
+//        DrawText(strbuf, 0, 0, 16, RED);
+//        sprintf(strbuf, "Heading X: %0.2f Heading Y: %0.2f", cos(deg2rad(degrees)), sin(deg2rad(degrees)));
+//        DrawText(strbuf, 0, 26, 16, RED);
 
         EndDrawing();
     }
