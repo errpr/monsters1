@@ -2,41 +2,19 @@
 #include "raylib.h"
 #include <raymath.h>
 #include <cstring>
+#include <assert.h>
 #include "sprite_stuff.hpp"
 #include "enemies.hpp"
 #include "keybinds.hpp"
+#include "main.hpp"
 
 #define SCREEN_WIDTH (800)
 #define SCREEN_HEIGHT (450)
-
 #define WINDOW_TITLE "Monsters"
-
 #define MAX_ENEMY_COUNT 999
+#define MAX_COLLISION_CHECK_DISTANCE 32.1f
+#define FRICTION_COEFFICIENT 0.1f
 #define COLLISION_DEBUG
-
-struct EnemyEntities {
-    int * enemyInfoId;
-    bool * alive;
-    Vector2 * position;
-    Vector2 * nextPosition;
-    float * size;
-    int * hp;
-    int * attack;
-    float * speed;
-    int * animFrame;
-};
-
-#ifdef COLLISION_DEBUG
-struct Collision {
-    float angle;
-    Vector2 position1;
-    Vector2 position2;
-    Vector2 position3;
-    float size1;
-    float size2;
-    float correctionDistance;
-};
-#endif
 
 static int lastEnemyId = 0;
 
@@ -60,6 +38,7 @@ void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLoc
     enemyEntities->alive[enemyId] = true;
     enemyEntities->position[enemyId] = {spawnLocation.x, spawnLocation.y};
     enemyEntities->nextPosition[enemyId] = {spawnLocation.x, spawnLocation.y};
+    enemyEntities->velocity[enemyId] = {0, 0};
     enemyEntities->size[enemyId] = size;
     enemyEntities->hp[enemyId] = enemyInfos[enemyInfoId].hp;
     enemyEntities->attack[enemyId] = enemyInfos[enemyInfoId].attack;
@@ -72,6 +51,7 @@ void copyEnemy(int srcIndex, EnemyEntities * srcEnemyEntities, int destIndex, En
     destEnemyEntities->alive[destIndex] = srcEnemyEntities->alive[srcIndex];
     destEnemyEntities->position[destIndex] = srcEnemyEntities->position[srcIndex];
     destEnemyEntities->nextPosition[destIndex] = srcEnemyEntities->nextPosition[srcIndex];
+    destEnemyEntities->velocity[destIndex] = srcEnemyEntities->velocity[srcIndex];
     destEnemyEntities->size[destIndex] = srcEnemyEntities->size[srcIndex];
     destEnemyEntities->hp[destIndex] = srcEnemyEntities->hp[srcIndex];
     destEnemyEntities->attack[destIndex] = srcEnemyEntities->attack[srcIndex];
@@ -85,6 +65,7 @@ void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
     auto alive = enemyEntities->alive[a];
     auto position = enemyEntities->position[a];
     auto nextPosition = enemyEntities->nextPosition[a];
+    auto momentum = enemyEntities->velocity[a];
     auto size = enemyEntities->size[a];
     auto hp = enemyEntities->hp[a];
     auto attack = enemyEntities->attack[a];
@@ -96,6 +77,7 @@ void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
     enemyEntities->alive[a] = enemyEntities->alive[b];
     enemyEntities->position[a] = enemyEntities->position[b];
     enemyEntities->nextPosition[a] = enemyEntities->nextPosition[b];
+    enemyEntities->velocity[a] = enemyEntities->velocity[b];
     enemyEntities->size[a] = enemyEntities->size[b];
     enemyEntities->hp[a] = enemyEntities->hp[b];
     enemyEntities->attack[a] = enemyEntities->attack[b];
@@ -107,6 +89,7 @@ void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
     enemyEntities->alive[b] = alive;
     enemyEntities->position[b] = position;
     enemyEntities->nextPosition[b] = nextPosition;
+    enemyEntities->velocity[b] = momentum;
     enemyEntities->size[b] = size;
     enemyEntities->hp[b] = hp;
     enemyEntities->attack[b] = attack;
@@ -120,6 +103,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     auto alive = enemyEntitiesSorted->alive;
     auto position = enemyEntitiesSorted->position;
     auto nextPosition = enemyEntitiesSorted->nextPosition;
+    auto velocity = enemyEntitiesSorted->velocity;
     auto size = enemyEntitiesSorted->size;
     auto hp = enemyEntitiesSorted->hp;
     auto attack = enemyEntitiesSorted->attack;
@@ -131,6 +115,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     enemyEntitiesSorted->alive = enemyEntities->alive;
     enemyEntitiesSorted->position = enemyEntities->position;
     enemyEntitiesSorted->nextPosition = enemyEntities->nextPosition;
+    enemyEntitiesSorted->velocity = enemyEntities->velocity;
     enemyEntitiesSorted->size = enemyEntities->size;
     enemyEntitiesSorted->hp = enemyEntities->hp;
     enemyEntitiesSorted->attack = enemyEntities->attack;
@@ -142,6 +127,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     enemyEntities->alive = alive;
     enemyEntities->position = position;
     enemyEntities->nextPosition = nextPosition;
+    enemyEntities->velocity = velocity;
     enemyEntities->size = size;
     enemyEntities->hp = hp;
     enemyEntities->attack = attack;
@@ -153,6 +139,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     memset(enemyEntitiesSorted->alive, 0, MAX_ENEMY_COUNT * sizeof(bool));
     memset(enemyEntitiesSorted->position, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
     memset(enemyEntitiesSorted->nextPosition, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
+    memset(enemyEntitiesSorted->velocity, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
     memset(enemyEntitiesSorted->size, 0, MAX_ENEMY_COUNT * sizeof(float));
     memset(enemyEntitiesSorted->hp, 0, MAX_ENEMY_COUNT * sizeof(int));
     memset(enemyEntitiesSorted->attack, 0, MAX_ENEMY_COUNT * sizeof(int));
@@ -178,6 +165,7 @@ int main(void)
             (bool *)calloc(MAX_ENEMY_COUNT, sizeof(bool)),
             (Vector2 *)calloc(MAX_ENEMY_COUNT,sizeof(Vector2)),
             (Vector2 *)calloc(MAX_ENEMY_COUNT,sizeof(Vector2)),
+            (Vector2 *)calloc(MAX_ENEMY_COUNT,sizeof(Vector2)),
             (float *)calloc(MAX_ENEMY_COUNT,sizeof(float)),
             (int *)calloc(MAX_ENEMY_COUNT,sizeof(int)),
             (int *)calloc(MAX_ENEMY_COUNT,sizeof(int)),
@@ -189,6 +177,7 @@ int main(void)
     EnemyEntities enemyEntitiesSorted = {
             (int *)calloc(MAX_ENEMY_COUNT, sizeof(int)),
             (bool *)calloc(MAX_ENEMY_COUNT, sizeof(bool)),
+            (Vector2 *)calloc(MAX_ENEMY_COUNT,sizeof(Vector2)),
             (Vector2 *)calloc(MAX_ENEMY_COUNT,sizeof(Vector2)),
             (Vector2 *)calloc(MAX_ENEMY_COUNT,sizeof(Vector2)),
             (float *)calloc(MAX_ENEMY_COUNT,sizeof(float)),
@@ -208,8 +197,11 @@ int main(void)
     bool manualStepping = false;
     double time = GetTime();
 
+    int highlightedMonsterIndex = 0;
     while (!WindowShouldClose())
     {
+        bool animDoNextFrame = false;
+
         float dt = 0;
         if (manualStepping) {
             dt = 0.033;
@@ -219,9 +211,15 @@ int main(void)
             time = GetTime();
         }
 
+
         if (IsKeyPressed(KB_TOGGLE_MANUAL_STEPPING)) {
             manualStepping = !manualStepping;
         } else if (manualStepping && !IsKeyPressed(KB_MANUAL_STEP)) {
+            highlightedMonsterIndex++;
+            if (highlightedMonsterIndex > lastEnemyId) {
+                highlightedMonsterIndex = 0;
+            }
+
             goto draw;
         }
 
@@ -230,8 +228,8 @@ int main(void)
         for (int i = 0; i < MAX_COLLISIONS; i++)
             collisions[i] = {0};
 #endif
+
         // update animation frame
-        bool animDoNextFrame = false;
         if (time - animTime > animStep) {
             animTime = time;
             animDoNextFrame = true;
@@ -241,13 +239,75 @@ int main(void)
         // update enemies
         //
 
-        // set desired next position
-        for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
-            if (!enemyEntities.alive[i]) break; // no body died yet, so dead one = end of arrays
-            enemyEntities.nextPosition[i] = Vector2MoveTowards(enemyEntities.position[i], playerPos, enemyEntities.speed[i]);
+        // update velocity / apply friction / move
+        for (int i = 0; i < lastEnemyId; i++) {
+            Vector2 towardsPlayer = Vector2Normalize(Vector2Subtract(playerPos, enemyEntities.position[i]));
+            Vector2 velocity = Vector2Add(enemyEntities.velocity[i], Vector2Scale(towardsPlayer, enemyEntities.speed[i] * dt));
+            Vector2 frictionDirection = Vector2Negate(Vector2Normalize(velocity));
+            float frictionMagnitude = Vector2Length(velocity);
+            Vector2 frictionVector = Vector2Scale(frictionDirection, frictionMagnitude * frictionMagnitude);
+            enemyEntities.velocity[i] = Vector2Add(velocity, Vector2Scale(Vector2Scale(frictionVector, dt), FRICTION_COEFFICIENT));
+            enemyEntities.nextPosition[i] = Vector2Add(enemyEntities.position[i], Vector2Scale(velocity, dt));
+        }
+//
+//        // set desired next position
+//        for (int i = 0; i < lastEnemyId; i++) {
+//            assert(enemyEntities.alive[i]); // no body died yet
+//            enemyEntities.nextPosition[i] = Vector2MoveTowards(enemyEntities.position[i], playerPos, enemyEntities.speed[i]);
+//        }
+
+        // sort by Y value of nextPos
+        {
+            float previousY = -INFINITY;
+            int sortedIndex = 0;
+            for (int i = 0; i < lastEnemyId; i++) {
+                float y = enemyEntities.nextPosition[i].y;
+
+                copyEnemy(i, &enemyEntities, sortedIndex, &enemyEntities);
+
+                if (y >= previousY) {
+                    previousY = y;
+                } else {
+                    for (int j = sortedIndex; j > 0; j--) {
+                        if (enemyEntities.nextPosition[j - 1].y >= y) {
+                            swapEnemy(j - 1, j, &enemyEntities);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                sortedIndex++;
+            }
         }
 
+
         // check for collisions
+        for (int i = 0; i < lastEnemyId; i++) {
+            Vector2 nextPos = enemyEntities.nextPosition[i];
+            float size = enemyEntities.size[i];
+            int minIndex = 0;
+            for (int j = i - 1; j >= 0; j--) {
+                Vector2 otherNextPos = enemyEntities.nextPosition[j];
+                if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break; // since we sort by Y value and everything is a circle, we know once we find something too far in Y nothing more can collide in this direction.
+                minIndex = j;
+            }
+            for (int j = minIndex; j < MAX_ENEMY_COUNT; j++) {
+                if (j == i) continue; // don't check against self
+                Vector2 otherNextPos = enemyEntities.nextPosition[j];
+                float otherSize = enemyEntities.size[j];
+                if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break; // since we sort by Y value and everything is a circle, we know once we find something too far in Y nothing more can collide in this direction.
+
+                float distance = Vector2Distance(otherNextPos, nextPos);
+                float sumOfRadii = (size * 0.5) + (otherSize * 0.5);
+                if (distance < sumOfRadii) {
+                    Vector2 vecDiff = Vector2Subtract(otherNextPos, nextPos);
+                    float collisionNormal = atan2f(vecDiff.y, vecDiff.x);
+                    float collisionAmount = (distance - sumOfRadii);
+
+                }
+            }
+        }
 
         /*
             float size = enemyEntities.size[i];
@@ -330,8 +390,37 @@ int main(void)
                 }
             }
             if (!blocked) {
-                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(100, 400) / 100.0f);
+                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(100, 400));
             }
+        }
+
+        // sort by Y value again
+        {
+            float previousY = -INFINITY;
+            int sortedIndex = 0;
+            for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
+                if (!enemyEntities.alive[i]) continue;
+
+                float y = enemyEntities.position[i].y;
+
+                copyEnemy(i, &enemyEntities, sortedIndex, &enemyEntitiesSorted);
+
+                if (y >= previousY) {
+                    previousY = y;
+                } else {
+                    for (int j = sortedIndex; j > 0; j--) {
+                        if (enemyEntitiesSorted.position[j - 1].y >= y) {
+                            swapEnemy(j - 1, j, &enemyEntitiesSorted);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                sortedIndex++;
+            }
+            swapAndClearEnemyEntities(&enemyEntities, &enemyEntitiesSorted);
+            lastEnemyId = sortedIndex; // sorted index is naturally the number of alive entities after the ordering
         }
 
         //
@@ -358,7 +447,9 @@ int main(void)
             if (pos.x > playerPos.x) {
                 textureSource.width = -textureSource.width;
             }
-            DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
+            auto color = WHITE;
+            if (manualStepping && highlightedMonsterIndex == i) color = RED;
+            DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, color);
         }
 
         // draw collision debug data
@@ -380,29 +471,6 @@ int main(void)
 //        DrawText(strbuf, 0, 26, 16, RED);
 
         EndDrawing();
-
-        // reorder entities by aliveness, distance to player
-        float previousDistance = 0.0f;
-        int sortedIndex = 0;
-        for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
-            if (!enemyEntities.alive[i]) continue;
-
-            float distance = Vector2Distance(enemyEntities.position[i], playerPos);
-            if (distance >= previousDistance) {
-                previousDistance = distance;
-                copyEnemy(i, &enemyEntities, sortedIndex, &enemyEntitiesSorted);
-            } else {
-                for (int j = sortedIndex; j >= 0; j--) {
-                    swapEnemy(j, j+1, &enemyEntitiesSorted);
-                    if (distance < Vector2Distance(enemyEntities.position[j], playerPos)) {
-                        copyEnemy(i, &enemyEntities, j, &enemyEntitiesSorted);
-                    }
-                }
-            }
-
-            sortedIndex++;
-        }
-        swapAndClearEnemyEntities(&enemyEntities, &enemyEntitiesSorted);
     }
 
     CloseWindow();
