@@ -287,24 +287,31 @@ int main(void)
             Vector2 nextPos = enemyEntities.nextPosition[i];
             float size = enemyEntities.size[i];
             int minIndex = 0;
+            // since we sort by Y value and everything is a circle, we know once we find something too far in Y nothing more can collide.
             for (int j = i - 1; j >= 0; j--) {
                 Vector2 otherNextPos = enemyEntities.nextPosition[j];
-                if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break; // since we sort by Y value and everything is a circle, we know once we find something too far in Y nothing more can collide in this direction.
+                if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break;
                 minIndex = j;
             }
             for (int j = minIndex; j < MAX_ENEMY_COUNT; j++) {
                 if (j == i) continue; // don't check against self
                 Vector2 otherNextPos = enemyEntities.nextPosition[j];
                 float otherSize = enemyEntities.size[j];
-                if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break; // since we sort by Y value and everything is a circle, we know once we find something too far in Y nothing more can collide in this direction.
+                if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break;
 
                 float distance = Vector2Distance(otherNextPos, nextPos);
                 float sumOfRadii = (size * 0.5) + (otherSize * 0.5);
                 if (distance < sumOfRadii) {
                     Vector2 vecDiff = Vector2Subtract(otherNextPos, nextPos);
-                    float collisionNormal = atan2f(vecDiff.y, vecDiff.x);
+//                    float collisionNormal = atan2f(vecDiff.y, vecDiff.x);
+                    Vector2 collisionNormal = Vector2Normalize(vecDiff);
                     float collisionAmount = (distance - sumOfRadii);
-
+                    Vector2 correction = Vector2Scale(collisionNormal, collisionAmount / 2);
+                    enemyEntities.velocity[i] = Vector2Add(enemyEntities.velocity[i], correction);
+                    enemyEntities.nextPosition[i] = Vector2Add(enemyEntities.nextPosition[i], correction);
+                    Vector2 oppositeCorrection = Vector2Negate(correction);
+                    enemyEntities.velocity[j] = Vector2Add(enemyEntities.velocity[j], oppositeCorrection);
+                    enemyEntities.nextPosition[j] = Vector2Add(enemyEntities.nextPosition[j], oppositeCorrection);
                 }
             }
         }
