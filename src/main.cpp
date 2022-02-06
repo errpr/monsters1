@@ -8,13 +8,12 @@
 #include "keybinds.hpp"
 #include "main.hpp"
 
-#define SCREEN_WIDTH (800)
-#define SCREEN_HEIGHT (450)
+#define SCREEN_WIDTH (1280)
+#define SCREEN_HEIGHT (720)
 #define WINDOW_TITLE "Monsters"
-#define MAX_ENEMY_COUNT 999
+#define MAX_ENEMY_COUNT 2000
 #define MAX_COLLISION_CHECK_DISTANCE 32.1f
 #define FRICTION_COEFFICIENT 0.1f
-#define COLLISION_DEBUG
 
 static int lastEnemyId = 0;
 
@@ -147,6 +146,20 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     memset(enemyEntitiesSorted->animFrame, 0, MAX_ENEMY_COUNT * sizeof(int));
 }
 
+void updateCamera(Camera2D *camera, Vector2 playerPos, int width, int height)
+{
+    static Vector2 bbox = { 0.2f, 0.2f };
+
+    Vector2 bboxWorldMin = GetScreenToWorld2D({ (1 - bbox.x)*0.5f*width, (1 - bbox.y)*0.5f*height }, *camera);
+    Vector2 bboxWorldMax = GetScreenToWorld2D({ (1 + bbox.x)*0.5f*width, (1 + bbox.y)*0.5f*height }, *camera);
+    camera->offset = { (1 - bbox.x)*0.5f * width, (1 - bbox.y)*0.5f*height };
+
+    if (playerPos.x < bboxWorldMin.x) camera->target.x = playerPos.x;
+    if (playerPos.y < bboxWorldMin.y) camera->target.y = playerPos.y;
+    if (playerPos.x > bboxWorldMax.x) camera->target.x = bboxWorldMin.x + (playerPos.x - bboxWorldMax.x);
+    if (playerPos.y > bboxWorldMax.y) camera->target.y = bboxWorldMin.y + (playerPos.y - bboxWorldMax.y);
+}
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, WINDOW_TITLE);
@@ -187,19 +200,27 @@ int main(void)
             (int *)calloc(MAX_ENEMY_COUNT,sizeof(int)),
     };
 
-    Vector2 playerPos = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
+    Vector2 playerPos = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
+    Vector2 playerFacing = { 1.0f, 1.0f };
+    float playerSpeed = 128.0f;
+    float playerTurnSpeed = 3.0f;
+    float playerSize = 64.0f;
+    int playerAnimationFrame = 0;
 
-#ifdef COLLISION_DEBUG
-    int collisionCounter = 0;
-#define MAX_COLLISIONS 100
-    Collision collisions[MAX_COLLISIONS] = {0};
-#endif
+    Camera2D camera = { 0 };
+    camera.target = playerPos;
+    camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
+    camera.rotation = 0.0f;
+    camera.zoom = 1.0f;
+
     bool manualStepping = false;
     double time = GetTime();
-
     int highlightedMonsterIndex = 0;
+    bool playerMovedThisFrame = false;
     while (!WindowShouldClose())
     {
+        bool playerMovedLastFrame = playerMovedThisFrame;
+        playerMovedThisFrame = false;
         bool animDoNextFrame = false;
 
         float dt = 0;
@@ -211,7 +232,6 @@ int main(void)
             time = GetTime();
         }
 
-
         if (IsKeyPressed(KB_TOGGLE_MANUAL_STEPPING)) {
             manualStepping = !manualStepping;
         } else if (manualStepping && !IsKeyPressed(KB_MANUAL_STEP)) {
@@ -222,12 +242,6 @@ int main(void)
 
             goto draw;
         }
-
-#ifdef COLLISION_DEBUG
-        collisionCounter = 0;
-        for (int i = 0; i < MAX_COLLISIONS; i++)
-            collisions[i] = {0};
-#endif
 
         // update animation frame
         if (time - animTime > animStep) {
@@ -249,12 +263,6 @@ int main(void)
             enemyEntities.velocity[i] = Vector2Add(velocity, Vector2Scale(Vector2Scale(frictionVector, dt), FRICTION_COEFFICIENT));
             enemyEntities.nextPosition[i] = Vector2Add(enemyEntities.position[i], Vector2Scale(velocity, dt));
         }
-//
-//        // set desired next position
-//        for (int i = 0; i < lastEnemyId; i++) {
-//            assert(enemyEntities.alive[i]); // no body died yet
-//            enemyEntities.nextPosition[i] = Vector2MoveTowards(enemyEntities.position[i], playerPos, enemyEntities.speed[i]);
-//        }
 
         // sort by Y value of nextPos
         {
@@ -316,62 +324,7 @@ int main(void)
             }
         }
 
-        /*
-            float size = enemyEntities.size[i];
-
-            bool collision = false;
-            int collisionRuns = 0;
-            do {
-                collision = false;
-                collisionRuns++;
-                float distance = 0;
-                float sumOfRadii = 0;
-                int j = 0;
-                for (; j < MAX_ENEMY_COUNT; j++) {
-                    if (j == i) continue;
-                    if (!enemyEntities.alive[j]) continue;
-                    distance = Vector2Distance(enemyEntities.position[j], newPos);
-                    sumOfRadii = (enemyEntities.size[j] / 3.0) + (size / 3.0);
-                    if (distance < sumOfRadii) {
-                        collision = true;
-                        break;
-                    }
-                }
-
-                if (collision) {
-                    Vector2 vecDiff = Vector2Subtract(enemyEntities.position[j], newPos);
-                    float angle = atan2f(vecDiff.y, vecDiff.x);
-                    float correctionMoveAmount = (distance - sumOfRadii) * (((float)GetRandomValue(1001, 1100) / 1000));
-#ifdef COLLISION_DEBUG
-                    Collision c = Collision{};
-                    c.angle = angle;
-                    c.position1 = {enemyEntities.position[j].x, enemyEntities.position[j].y};
-                    c.position2 = {newPos.x, newPos.y};
-                    c.size1 = enemyEntities.size[j];
-                    c.size2 = size;
-                    c.correctionDistance = correctionMoveAmount;
-#endif
-                    newPos.x += cosf(angle) * correctionMoveAmount;
-                    newPos.y += sinf(angle) * correctionMoveAmount;
-#ifdef COLLISION_DEBUG
-                    c.position3 = {newPos.x, newPos.y};
-                    collisions[collisionCounter++] = c;
-                    if (collisionCounter >= MAX_COLLISIONS)
-                        collisionCounter = 0;
-#endif
-                }
-            } while (collision && collisionRuns < 5);
-            if (collisionRuns < 5) {
-                enemyEntities.position[i] = newPos;
-            }
-            if (Vector2Distance(newPos, playerPos) < size * 1.1) {
-                // touch player get dizzy
-                enemyEntities.alive[i] = false;
-            }
-        }
-        */
-
-        // actually do the move (via pointer swap)
+        // actually do the move (via pointer swap) Maybe we should zero out nextPostion after but I don't think it matters
         {
             auto tmp = enemyEntities.position;
             enemyEntities.position = enemyEntities.nextPosition;
@@ -430,14 +383,40 @@ int main(void)
             lastEnemyId = sortedIndex; // sorted index is naturally the number of alive entities after the ordering
         }
 
+        // update player
+        if (IsKeyDown(KB_MOVE_RIGHT)) {
+            playerPos.x += playerSpeed * dt;
+            playerFacing.x = Clamp(playerFacing.x + (playerTurnSpeed * dt), -1.0f, 1.0f);
+            playerMovedThisFrame = true;
+        }
+        if (IsKeyDown(KB_MOVE_LEFT)) {
+            playerPos.x -= playerSpeed * dt;
+            playerFacing.x = Clamp(playerFacing.x - (playerTurnSpeed * dt), -1.0f, 1.0f);
+            playerMovedThisFrame = true;
+        }
+        if (IsKeyDown(KB_MOVE_DOWN)) {
+            playerPos.y += playerSpeed * dt;
+            playerFacing.y = Clamp(playerFacing.y + (playerTurnSpeed * dt), -1.0f, 1.0f);
+            playerMovedThisFrame = true;
+        }
+        if (IsKeyDown(KB_MOVE_UP)) {
+            playerPos.y -= playerSpeed * dt;
+            playerFacing.y = Clamp(playerFacing.y - (playerTurnSpeed * dt), -1.0f, 1.0f);
+            playerMovedThisFrame = true;
+        }
+
         //
         // draw
         //
         draw:
 
+        updateCamera(&camera, playerPos, SCREEN_WIDTH, SCREEN_HEIGHT);
+
         BeginDrawing();
 
         ClearBackground(GRAY);
+
+        BeginMode2D(camera);
 
         // draw enemies
         for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
@@ -459,23 +438,36 @@ int main(void)
             DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, color);
         }
 
-        // draw collision debug data
-#ifdef COLLISION_DEBUG
-        for (int i = 0; i < MAX_COLLISIONS; i++) {
-            Collision c = collisions[i];
-            if (c.size1 == NULL) continue;
-//            DrawCircle(c.position1.x, c.position1.y, c.size1 / 2, BLUE);
-            DrawCircle(c.position2.x, c.position2.y, c.size2 / 2, RED);
-            DrawCircle(c.position3.x, c.position3.y, c.size2 / 2, GREEN);
-            DrawLine(c.position2.x, c.position2.y, c.position3.x, c.position3.y, PURPLE);
-        }
-#endif
+        // draw player
+        {
 
-//        char strbuf[128] = {};
-//        sprintf(strbuf, "Degrees: %0.2f", degrees);
-//        DrawText(strbuf, 0, 0, 16, RED);
-//        sprintf(strbuf, "Heading X: %0.2f Heading Y: %0.2f", cos(deg2rad(degrees)), sin(deg2rad(degrees)));
-//        DrawText(strbuf, 0, 26, 16, RED);
+            AnimationInfo anim = knight_m_idle_anim;
+            if (playerMovedThisFrame) {
+                anim = knight_m_run_anim;
+                if (!playerMovedLastFrame) {
+                    playerAnimationFrame = 0;
+                }
+            }
+
+            Vector2 animRatio = Vector2Normalize({anim.width, anim.height});
+            Vector2 playerSizedVector = Vector2Scale(animRatio, playerSize);
+            Rectangle quad = { playerPos.x, playerPos.y, playerSizedVector.x, playerSizedVector.y };
+
+            Rectangle textureSource = { 0 };
+            if (animDoNextFrame) ++playerAnimationFrame;
+            textureSource.x = anim.x + (anim.width * (playerAnimationFrame % anim.frames));
+            textureSource.y = anim.y;
+            textureSource.width = anim.width;
+            textureSource.height = anim.height;
+
+            if (playerFacing.x < 0) {
+                textureSource.width = -textureSource.width;
+            }
+
+            DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
+        }
+
+        EndMode2D();
 
         EndDrawing();
     }
