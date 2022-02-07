@@ -5,7 +5,7 @@ struct EnemyEntities {
     Vector2 * position;
     Vector2 * nextPosition;
     Vector2 * velocity;
-    float * size;
+    float * radius;
     int * hp;
     int * attack;
     float * speed;

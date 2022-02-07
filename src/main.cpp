@@ -14,6 +14,7 @@
 #define MAX_ENEMY_COUNT 2000
 #define MAX_COLLISION_CHECK_DISTANCE 32.1f
 #define FRICTION_COEFFICIENT 0.1f
+#define COLLISION_DEBUG
 
 static int lastEnemyId = 0;
 
@@ -31,14 +32,14 @@ float randomDegrees() {
     return ((float)r) / 10.0f;
 }
 
-void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLocation, float size, float speed) {
+void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLocation, float radius, float speed) {
     int enemyId = GetNewEnemyId();
     enemyEntities->enemyInfoId[enemyId] = enemyInfoId;
     enemyEntities->alive[enemyId] = true;
     enemyEntities->position[enemyId] = {spawnLocation.x, spawnLocation.y};
     enemyEntities->nextPosition[enemyId] = {spawnLocation.x, spawnLocation.y};
     enemyEntities->velocity[enemyId] = {0, 0};
-    enemyEntities->size[enemyId] = size;
+    enemyEntities->radius[enemyId] = radius;
     enemyEntities->hp[enemyId] = enemyInfos[enemyInfoId].hp;
     enemyEntities->attack[enemyId] = enemyInfos[enemyInfoId].attack;
     enemyEntities->speed[enemyId] = speed;
@@ -51,7 +52,7 @@ void copyEnemy(int srcIndex, EnemyEntities * srcEnemyEntities, int destIndex, En
     destEnemyEntities->position[destIndex] = srcEnemyEntities->position[srcIndex];
     destEnemyEntities->nextPosition[destIndex] = srcEnemyEntities->nextPosition[srcIndex];
     destEnemyEntities->velocity[destIndex] = srcEnemyEntities->velocity[srcIndex];
-    destEnemyEntities->size[destIndex] = srcEnemyEntities->size[srcIndex];
+    destEnemyEntities->radius[destIndex] = srcEnemyEntities->radius[srcIndex];
     destEnemyEntities->hp[destIndex] = srcEnemyEntities->hp[srcIndex];
     destEnemyEntities->attack[destIndex] = srcEnemyEntities->attack[srcIndex];
     destEnemyEntities->speed[destIndex] = srcEnemyEntities->speed[srcIndex];
@@ -65,7 +66,7 @@ void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
     auto position = enemyEntities->position[a];
     auto nextPosition = enemyEntities->nextPosition[a];
     auto momentum = enemyEntities->velocity[a];
-    auto size = enemyEntities->size[a];
+    auto radius = enemyEntities->radius[a];
     auto hp = enemyEntities->hp[a];
     auto attack = enemyEntities->attack[a];
     auto speed = enemyEntities->speed[a];
@@ -77,7 +78,7 @@ void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
     enemyEntities->position[a] = enemyEntities->position[b];
     enemyEntities->nextPosition[a] = enemyEntities->nextPosition[b];
     enemyEntities->velocity[a] = enemyEntities->velocity[b];
-    enemyEntities->size[a] = enemyEntities->size[b];
+    enemyEntities->radius[a] = enemyEntities->radius[b];
     enemyEntities->hp[a] = enemyEntities->hp[b];
     enemyEntities->attack[a] = enemyEntities->attack[b];
     enemyEntities->speed[a] = enemyEntities->speed[b];
@@ -89,7 +90,7 @@ void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
     enemyEntities->position[b] = position;
     enemyEntities->nextPosition[b] = nextPosition;
     enemyEntities->velocity[b] = momentum;
-    enemyEntities->size[b] = size;
+    enemyEntities->radius[b] = radius;
     enemyEntities->hp[b] = hp;
     enemyEntities->attack[b] = attack;
     enemyEntities->speed[b] = speed;
@@ -103,7 +104,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     auto position = enemyEntitiesSorted->position;
     auto nextPosition = enemyEntitiesSorted->nextPosition;
     auto velocity = enemyEntitiesSorted->velocity;
-    auto size = enemyEntitiesSorted->size;
+    auto size = enemyEntitiesSorted->radius;
     auto hp = enemyEntitiesSorted->hp;
     auto attack = enemyEntitiesSorted->attack;
     auto speed = enemyEntitiesSorted->speed;
@@ -115,7 +116,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     enemyEntitiesSorted->position = enemyEntities->position;
     enemyEntitiesSorted->nextPosition = enemyEntities->nextPosition;
     enemyEntitiesSorted->velocity = enemyEntities->velocity;
-    enemyEntitiesSorted->size = enemyEntities->size;
+    enemyEntitiesSorted->radius = enemyEntities->radius;
     enemyEntitiesSorted->hp = enemyEntities->hp;
     enemyEntitiesSorted->attack = enemyEntities->attack;
     enemyEntitiesSorted->speed = enemyEntities->speed;
@@ -127,7 +128,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     enemyEntities->position = position;
     enemyEntities->nextPosition = nextPosition;
     enemyEntities->velocity = velocity;
-    enemyEntities->size = size;
+    enemyEntities->radius = size;
     enemyEntities->hp = hp;
     enemyEntities->attack = attack;
     enemyEntities->speed = speed;
@@ -139,7 +140,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
     memset(enemyEntitiesSorted->position, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
     memset(enemyEntitiesSorted->nextPosition, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
     memset(enemyEntitiesSorted->velocity, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
-    memset(enemyEntitiesSorted->size, 0, MAX_ENEMY_COUNT * sizeof(float));
+    memset(enemyEntitiesSorted->radius, 0, MAX_ENEMY_COUNT * sizeof(float));
     memset(enemyEntitiesSorted->hp, 0, MAX_ENEMY_COUNT * sizeof(int));
     memset(enemyEntitiesSorted->attack, 0, MAX_ENEMY_COUNT * sizeof(int));
     memset(enemyEntitiesSorted->speed, 0, MAX_ENEMY_COUNT * sizeof(float));
@@ -148,7 +149,7 @@ void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * en
 
 void updateCamera(Camera2D *camera, Vector2 playerPos, int width, int height)
 {
-    static Vector2 bbox = { 0.2f, 0.2f };
+    static Vector2 bbox = { 0.15f, 0.15f };
 
     Vector2 bboxWorldMin = GetScreenToWorld2D({ (1 - bbox.x)*0.5f*width, (1 - bbox.y)*0.5f*height }, *camera);
     Vector2 bboxWorldMax = GetScreenToWorld2D({ (1 + bbox.x)*0.5f*width, (1 + bbox.y)*0.5f*height }, *camera);
@@ -158,6 +159,15 @@ void updateCamera(Camera2D *camera, Vector2 playerPos, int width, int height)
     if (playerPos.y < bboxWorldMin.y) camera->target.y = playerPos.y;
     if (playerPos.x > bboxWorldMax.x) camera->target.x = bboxWorldMin.x + (playerPos.x - bboxWorldMax.x);
     if (playerPos.y > bboxWorldMax.y) camera->target.y = bboxWorldMin.y + (playerPos.y - bboxWorldMax.y);
+}
+
+Rectangle circleToSquare(Vector2 circlePos, float radius, float scale) {
+    Rectangle result = {};
+    result.x = circlePos.x - (radius * scale);
+    result.y = circlePos.y - (radius * scale);
+    result.width = (radius * scale) * 2;
+    result.height = (radius * scale) * 2;
+    return result;
 }
 
 int main(void)
@@ -203,8 +213,10 @@ int main(void)
     Vector2 playerPos = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
     Vector2 playerFacing = { 1.0f, 1.0f };
     float playerSpeed = 128.0f;
-    float playerTurnSpeed = 3.0f;
-    float playerSize = 64.0f;
+    float playerTurnSpeed = 4.0f;
+    float playerRadius = 16.0f;
+    float playerHp = 100.0f;
+    float maxPlayerHp = 100.0f;
     int playerAnimationFrame = 0;
 
     Camera2D camera = { 0 };
@@ -219,9 +231,11 @@ int main(void)
     bool playerMovedThisFrame = false;
     while (!WindowShouldClose())
     {
+        bool gameOver = false;
         bool playerMovedLastFrame = playerMovedThisFrame;
         playerMovedThisFrame = false;
         bool animDoNextFrame = false;
+        bool damageTakenThisFrame = false;
 
         float dt = 0;
         if (manualStepping) {
@@ -293,7 +307,7 @@ int main(void)
         // check for collisions
         for (int i = 0; i < lastEnemyId; i++) {
             Vector2 nextPos = enemyEntities.nextPosition[i];
-            float size = enemyEntities.size[i];
+            float radius = enemyEntities.radius[i];
             int minIndex = 0;
             // since we sort by Y value and everything is a circle, we know once we find something too far in Y nothing more can collide.
             for (int j = i - 1; j >= 0; j--) {
@@ -304,11 +318,11 @@ int main(void)
             for (int j = minIndex; j < MAX_ENEMY_COUNT; j++) {
                 if (j == i) continue; // don't check against self
                 Vector2 otherNextPos = enemyEntities.nextPosition[j];
-                float otherSize = enemyEntities.size[j];
+                float otherRadius = enemyEntities.radius[j];
                 if (abs(nextPos.y - otherNextPos.y) > MAX_COLLISION_CHECK_DISTANCE) break;
 
                 float distance = Vector2Distance(otherNextPos, nextPos);
-                float sumOfRadii = (size * 0.5) + (otherSize * 0.5);
+                float sumOfRadii = radius + otherRadius;
                 if (distance < sumOfRadii) {
                     Vector2 vecDiff = Vector2Subtract(otherNextPos, nextPos);
 //                    float collisionNormal = atan2f(vecDiff.y, vecDiff.x);
@@ -338,12 +352,12 @@ int main(void)
             Vector2 spawnLocation = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
             spawnLocation.x += cos(spawnDirectionDegrees * DEG2RAD) * 400;
             spawnLocation.y += sin(spawnDirectionDegrees * DEG2RAD) * 400;
-            float size = 32.0;//(float)GetRandomValue(16, 64);
+            float size = 16.0;//(float)GetRandomValue(16, 64);
             bool blocked = false;
             for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
                 if (!enemyEntities.alive[i]) continue;
                 float distance = Vector2Distance(enemyEntities.position[i], spawnLocation);
-                float sumOfRadii = (enemyEntities.size[i] / 2) + (size / 2);
+                float sumOfRadii = enemyEntities.radius[i] + size;
                 if (distance < sumOfRadii) {
                     blocked = true;
                     break;
@@ -354,7 +368,10 @@ int main(void)
             }
         }
 
-        // sort by Y value again
+        // update bullets / weapons (kill enemies)
+
+
+        // sort enemies by Y value again
         {
             float previousY = -INFINITY;
             int sortedIndex = 0;
@@ -380,7 +397,7 @@ int main(void)
                 sortedIndex++;
             }
             swapAndClearEnemyEntities(&enemyEntities, &enemyEntitiesSorted);
-            lastEnemyId = sortedIndex; // sorted index is naturally the number of alive entities after the ordering
+            lastEnemyId = sortedIndex;
         }
 
         // update player
@@ -405,6 +422,23 @@ int main(void)
             playerMovedThisFrame = true;
         }
 
+        // collide with enemies (take damage)
+        for (int i = 0; i < lastEnemyId; i++) {
+            if (enemyEntities.position[i].y < playerPos.y - MAX_COLLISION_CHECK_DISTANCE) continue;
+            if (enemyEntities.position[i].y > playerPos.y + MAX_COLLISION_CHECK_DISTANCE) continue;
+            float distance = Vector2Distance(enemyEntities.position[i], playerPos);
+            float sumOfRadii = enemyEntities.radius[i] + playerRadius;
+            if (distance < sumOfRadii) {
+                damageTakenThisFrame = true;
+                playerHp -= enemyEntities.attack[i] * dt;
+            }
+        }
+
+        // game over
+        if (playerHp <= 0) {
+            gameOver = true;
+        }
+
         //
         // draw
         //
@@ -416,16 +450,21 @@ int main(void)
 
         ClearBackground(GRAY);
 
+        // draw floor
+        Rectangle floorSource = { floor_1.x, floor_1.y, floor_1.width, floor_1.height };
+        Rectangle floorQuad = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+        DrawTextureTiled(texture, floorSource, floorQuad, {0.0, 0.0f}, 0, 1, WHITE);
+
         BeginMode2D(camera);
 
-        // draw enemies
-        for (int i = 0; i < MAX_ENEMY_COUNT; i++) {
-            if (!enemyEntities.alive[i]) continue;
 
+        // draw enemies
+        for (int i = 0; i < lastEnemyId; i++) {
+            assert(enemyEntities.alive[i]);
             Vector2 pos = enemyEntities.position[i];
-            float size = enemyEntities.size[i];
+            float radius = enemyEntities.radius[i];
             EnemyInfo info = enemyInfos[enemyEntities.enemyInfoId[i]];
-            Rectangle quad = { pos.x, pos.y, size, size };
+            Rectangle quad = circleToSquare(pos, radius, 1.25);
             Rectangle textureSource = info.textureSource;
             int animFrame = enemyEntities.animFrame[i];
             if (animDoNextFrame) enemyEntities.animFrame[i] = ++animFrame;
@@ -436,22 +475,41 @@ int main(void)
             auto color = WHITE;
             if (manualStepping && highlightedMonsterIndex == i) color = RED;
             DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, color);
+
+#ifdef COLLISION_DEBUG
+            Color c = RED;
+            c.a = 100;
+            DrawCircle(pos.x, pos.y, radius, c);
+#endif
         }
 
         // draw player
         {
-
             AnimationInfo anim = knight_m_idle_anim;
-            if (playerMovedThisFrame) {
+            if (playerMovedThisFrame)
                 anim = knight_m_run_anim;
-                if (!playerMovedLastFrame) {
-                    playerAnimationFrame = 0;
-                }
+
+            if (playerMovedThisFrame && !playerMovedLastFrame)
+                playerAnimationFrame = 0;
+
+            if (!playerMovedThisFrame && playerMovedLastFrame)
+                playerAnimationFrame = 0;
+
+            if (damageTakenThisFrame) {
+                anim = knight_m_hit_anim;
+                playerAnimationFrame = 0;
             }
 
-            Vector2 animRatio = Vector2Normalize({anim.width, anim.height});
-            Vector2 playerSizedVector = Vector2Scale(animRatio, playerSize);
-            Rectangle quad = { playerPos.x, playerPos.y, playerSizedVector.x, playerSizedVector.y };
+
+            Rectangle quad = {0};
+            float widthScale = playerRadius / anim.width;
+            float heightScale = playerRadius / anim.height;
+            // the knight has a bunch of extra pixels for height to fit his stupid hat
+            float scale = fmax(widthScale, heightScale) * 1.75;
+            quad.x = playerPos.x - ((anim.width * scale) * 0.5);
+            quad.y = playerPos.y - ((anim.height * scale) * 0.75);
+            quad.width = anim.width * scale;
+            quad.height = anim.height * scale;
 
             Rectangle textureSource = { 0 };
             if (animDoNextFrame) ++playerAnimationFrame;
@@ -465,6 +523,15 @@ int main(void)
             }
 
             DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
+
+            Rectangle hpBar =  {quad.x, quad.y + quad.height, quad.width * (playerHp / maxPlayerHp), 3.0f};
+            DrawRectangleRec(hpBar, RED);
+
+#ifdef COLLISION_DEBUG
+            Color c = BLUE;
+            c.a = 100;
+            DrawCircle(playerPos.x, playerPos.y, playerRadius, c);
+#endif
         }
 
         EndMode2D();
