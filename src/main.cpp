@@ -14,7 +14,10 @@
 #define MAX_ENEMY_COUNT 2000
 #define MAX_COLLISION_CHECK_DISTANCE 32.1f
 #define FRICTION_COEFFICIENT 0.1f
-#define COLLISION_DEBUG
+
+//#define COLLISION_DEBUG
+//#define FLOOR_DEBUG
+//#define SORTING_DEBUG
 
 static int lastEnemyId = 0;
 
@@ -176,7 +179,12 @@ int main(void)
     SetTargetFPS(60);
 
     Texture2D texture = LoadTexture(ASSETS_PATH"0x72_DungeonTilesetII_v1.4.png");
-
+    Texture2D floorTexture;
+    {
+        Image floorImage = LoadImageFromTexture(texture);
+        ImageCrop(&floorImage, {floor_1.x, floor_1.y, floor_1.width, floor_1.height});
+        floorTexture = LoadTextureFromImage(floorImage);
+    }
     float animStep = 0.15f;
     double animTime = GetTime();
 
@@ -225,10 +233,19 @@ int main(void)
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
 
+#ifdef SORTING_DEBUG
+    int highlightedMonsterIndex = 0;
+#endif
+#ifdef FLOOR_DEBUG
+    float prevFloorX = 0.0f;
+    float prevFloorY = 0.0f;
+#endif
+
     bool manualStepping = false;
     double time = GetTime();
-    int highlightedMonsterIndex = 0;
     bool playerMovedThisFrame = false;
+    float speedScale = 1.0f;
+    int targetFps = 60;
     while (!WindowShouldClose())
     {
         bool gameOver = false;
@@ -242,18 +259,39 @@ int main(void)
             dt = 0.033;
             time = time + dt;
         } else {
-            dt = GetFrameTime();
+            dt = GetFrameTime() * speedScale;
             time = GetTime();
+        }
+
+        if (IsKeyPressed(KB_INCREASE_SPEED_SCALING)) {
+            speedScale *= 1.5f;
+        }
+        if (IsKeyPressed(KB_DECREASE_SPEED_SCALING)) {
+            speedScale *= 0.5f;
+        }
+        if (speedScale > 0.9f && speedScale < 1.1f) {
+            speedScale = 1.0f;
+        }
+
+        if (IsKeyPressed(KB_INCREASE_FRAME_RATE)) {
+            targetFps += 10;
+            SetTargetFPS(targetFps);
+        }
+        if (IsKeyPressed(KB_DECREASE_FRAME_RATE)) {
+            targetFps -= 10;
+            if (targetFps < 1) targetFps = 1;
+            SetTargetFPS(targetFps);
         }
 
         if (IsKeyPressed(KB_TOGGLE_MANUAL_STEPPING)) {
             manualStepping = !manualStepping;
         } else if (manualStepping && !IsKeyPressed(KB_MANUAL_STEP)) {
+#ifdef SORTING_DEBUG
             highlightedMonsterIndex++;
             if (highlightedMonsterIndex > lastEnemyId) {
                 highlightedMonsterIndex = 0;
             }
-
+#endif
             goto draw;
         }
 
@@ -451,12 +489,22 @@ int main(void)
         ClearBackground(GRAY);
 
         // draw floor
-        Rectangle floorSource = { floor_1.x, floor_1.y, floor_1.width, floor_1.height };
-        Rectangle floorQuad = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-        DrawTextureTiled(texture, floorSource, floorQuad, {0.0, 0.0f}, 0, 1, WHITE);
+//        Rectangle floorSource = { floor_1.x, floor_1.y, floor_1.width, floor_1.height };
+//        Rectangle floorQuad = {
+//                abs(fmodf(camera.target.x, floor_1.width * 2)),
+//                abs(fmodf(camera.target.y, floor_1.height * 2)),
+//                SCREEN_WIDTH,
+//                SCREEN_HEIGHT
+//        };
+//        DrawTextureTiled(texture, floorSource, floorQuad, {0.0, 0.0f}, 0, 2, WHITE);
+
+        float xOffset = fmodf(camera.target.x, floor_1.width * 2);
+        float yOffset = fmodf(camera.target.y, floor_1.height * 2);
+        Rectangle floorSource = { xOffset / 2, yOffset / 2, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
+        Rectangle floorQuad = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
+        DrawTexturePro(floorTexture, floorSource, floorQuad, {0, 0}, 0, WHITE);
 
         BeginMode2D(camera);
-
 
         // draw enemies
         for (int i = 0; i < lastEnemyId; i++) {
@@ -473,7 +521,9 @@ int main(void)
                 textureSource.width = -textureSource.width;
             }
             auto color = WHITE;
+#ifdef SORTING_DEBUG
             if (manualStepping && highlightedMonsterIndex == i) color = RED;
+#endif
             DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, color);
 
 #ifdef COLLISION_DEBUG
@@ -534,8 +584,18 @@ int main(void)
 #endif
         }
 
+        // draw bullets / weapons
+
         EndMode2D();
 
+#ifdef FLOOR_DEBUG
+        DrawText(TextFormat("Camera X %f Camera Y %f", camera.target.x, camera.target.y), 5, 5, 12, BLUE);
+        DrawText(TextFormat("Previous Floor X %f Previous Floor Y %f", prevFloorX, prevFloorY), 5, 20, 12, BLUE);
+        DrawText(TextFormat("New Floor X %f New Floor Y %f", floorQuad.x, floorQuad.y), 5, 35, 12, BLUE);
+        DrawText(TextFormat("Floor X dff %f Floor Y diff %f", floorQuad.x - prevFloorX, floorQuad.y - prevFloorY), 5, 50, 12, BLUE);
+        prevFloorX = floorQuad.x;
+        prevFloorY = floorQuad.y;
+#endif
         EndDrawing();
     }
 
