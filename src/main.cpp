@@ -7,6 +7,7 @@
 #include "enemies.hpp"
 #include "keybinds.hpp"
 #include "main.hpp"
+#include "TileMap.h"
 
 #define SCREEN_WIDTH (1280)
 #define SCREEN_HEIGHT (720)
@@ -185,6 +186,9 @@ int main(void)
         ImageCrop(&floorImage, {floor_1.x, floor_1.y, floor_1.width, floor_1.height});
         floorTexture = LoadTextureFromImage(floorImage);
     }
+
+    TileMap *tileMap = new TileMap(ASSETS_PATH"tilemap.bin", 32.0f);
+
     float animStep = 0.15f;
     double animTime = GetTime();
 
@@ -246,6 +250,7 @@ int main(void)
     bool playerMovedThisFrame = false;
     float speedScale = 1.0f;
     int targetFps = 60;
+
     while (!WindowShouldClose())
     {
         bool gameOver = false;
@@ -260,6 +265,7 @@ int main(void)
             time = time + dt;
         } else {
             dt = GetFrameTime() * speedScale;
+            dt = Clamp(dt, 0.0f, 1.0f);
             time = GetTime();
         }
 
@@ -488,23 +494,30 @@ int main(void)
 
         ClearBackground(GRAY);
 
-        // draw floor
-//        Rectangle floorSource = { floor_1.x, floor_1.y, floor_1.width, floor_1.height };
-//        Rectangle floorQuad = {
-//                abs(fmodf(camera.target.x, floor_1.width * 2)),
-//                abs(fmodf(camera.target.y, floor_1.height * 2)),
-//                SCREEN_WIDTH,
-//                SCREEN_HEIGHT
-//        };
-//        DrawTextureTiled(texture, floorSource, floorQuad, {0.0, 0.0f}, 0, 2, WHITE);
-
-        float xOffset = fmodf(camera.target.x, floor_1.width * 2);
-        float yOffset = fmodf(camera.target.y, floor_1.height * 2);
-        Rectangle floorSource = { xOffset / 2, yOffset / 2, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
-        Rectangle floorQuad = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-        DrawTexturePro(floorTexture, floorSource, floorQuad, {0, 0}, 0, WHITE);
-
         BeginMode2D(camera);
+
+        // draw floor
+        Rectangle floorSource = { floor_1.x, floor_1.y, floor_1.width, floor_1.height };
+        auto floorTileHeight = tileMap->tileHeight;
+        auto floorTileWidth = tileMap->tileWidth;
+
+        Vector2 beginPosition = GetScreenToWorld2D({0.0f - floorTileWidth, 0.0f - floorTileHeight}, camera);
+        Vector2 endPosition = GetScreenToWorld2D({SCREEN_WIDTH + (float)floorTileWidth, SCREEN_HEIGHT + (float)floorTileHeight}, camera);
+        for (float y = beginPosition.y; y < endPosition.y; y += floorTileHeight) {
+            for (float x = beginPosition.x; x < endPosition.x; x += floorTileWidth) {
+                Rectangle quad = {};
+                TileInfo tileInfo = tileMap->getTileAtWorldCoords(x, y);
+                quad.x = tileInfo.x;
+                quad.y = tileInfo.y;
+                quad.width = floorTileWidth;
+                quad.height = floorTileHeight;
+                if (tileInfo.tileType == 0) {
+                    DrawRectangleRec(quad, BLACK);
+                } else {
+                    DrawTexturePro(texture, floorSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
+                }
+            }
+        }
 
         // draw enemies
         for (int i = 0; i < lastEnemyId; i++) {
