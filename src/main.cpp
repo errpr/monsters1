@@ -13,7 +13,10 @@
 #define SCREEN_HEIGHT (720)
 #define WINDOW_TITLE "Monsters"
 #define MAX_ENEMY_COUNT 2000
-#define MAX_COLLISION_CHECK_DISTANCE 32.1f
+#define MAX_DELTA_TIME 0.5f
+#define SMALLEST_ENEMY_RADIUS 16.0f
+#define MAX_COLLISION_CHECK_DISTANCE (SMALLEST_ENEMY_RADIUS * 2) + 0.1f
+#define SPEED_LIMIT (SMALLEST_ENEMY_RADIUS * MAX_DELTA_TIME)
 #define FRICTION_COEFFICIENT 0.1f
 
 //#define COLLISION_DEBUG
@@ -190,10 +193,10 @@ int main(void)
     TileMap *tileMap = new TileMap(ASSETS_PATH"tilemap.bin", 32.0f);
 
     float animStep = 0.15f;
-    double animTime = GetTime();
+    double nextAnimTime = GetTime() + animStep;
 
-    double spawnTimer = GetTime();
     float spawnThreshold = 0.01f;
+    double nextSpawnTime = GetTime() + spawnThreshold;
 
     EnemyEntities enemyEntities = {
             (int *)calloc(MAX_ENEMY_COUNT, sizeof(int)),
@@ -265,7 +268,7 @@ int main(void)
             time = time + dt;
         } else {
             dt = GetFrameTime() * speedScale;
-            dt = Clamp(dt, 0.0f, 1.0f);
+            dt = Clamp(dt, 0.0f, MAX_DELTA_TIME);
             time = GetTime();
         }
 
@@ -302,8 +305,8 @@ int main(void)
         }
 
         // update animation frame
-        if (time - animTime > animStep) {
-            animTime = time;
+        if (time > nextAnimTime) {
+            nextAnimTime += animStep;
             animDoNextFrame = true;
         }
 
@@ -314,12 +317,16 @@ int main(void)
         // update velocity / apply friction / move
         for (int i = 0; i < lastEnemyId; i++) {
             Vector2 towardsPlayer = Vector2Normalize(Vector2Subtract(playerPos, enemyEntities.position[i]));
-            Vector2 velocity = Vector2Add(enemyEntities.velocity[i], Vector2Scale(towardsPlayer, enemyEntities.speed[i] * dt));
-            Vector2 frictionDirection = Vector2Negate(Vector2Normalize(velocity));
-            float frictionMagnitude = Vector2Length(velocity);
+            Vector2 prefrictionVelocity = Vector2Add(enemyEntities.velocity[i], Vector2Scale(towardsPlayer, enemyEntities.speed[i] * dt));
+            Vector2 frictionDirection = Vector2Negate(Vector2Normalize(prefrictionVelocity));
+            float frictionMagnitude = Vector2Length(prefrictionVelocity);
             Vector2 frictionVector = Vector2Scale(frictionDirection, frictionMagnitude * frictionMagnitude);
-            enemyEntities.velocity[i] = Vector2Add(velocity, Vector2Scale(Vector2Scale(frictionVector, dt), FRICTION_COEFFICIENT));
-            enemyEntities.nextPosition[i] = Vector2Add(enemyEntities.position[i], Vector2Scale(velocity, dt));
+            Vector2 rawVelocity = Vector2Add(prefrictionVelocity, Vector2Scale(frictionVector, FRICTION_COEFFICIENT));
+            rawVelocity.x = Clamp(rawVelocity.x, -SPEED_LIMIT, SPEED_LIMIT);
+            rawVelocity.y = Clamp(rawVelocity.y, -SPEED_LIMIT, SPEED_LIMIT);
+            enemyEntities.velocity[i] = rawVelocity;
+
+            enemyEntities.nextPosition[i] = Vector2Add(enemyEntities.position[i], rawVelocity);
         }
 
         // sort by Y value of nextPos
@@ -390,8 +397,8 @@ int main(void)
         }
 
         // spawn new enemies
-        if (time - spawnTimer > spawnThreshold) {
-            spawnTimer = time;
+        if (time > nextSpawnTime) {
+            nextSpawnTime += spawnThreshold;
             int spawnDirectionDegrees = randomDegrees() + (((float)GetRandomValue(-200, 200)) / 100.0f);
             Vector2 spawnLocation = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
             spawnLocation.x += cos(spawnDirectionDegrees * DEG2RAD) * 400;
@@ -408,7 +415,7 @@ int main(void)
                 }
             }
             if (!blocked) {
-                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(100, 400));
+                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(playerSpeed / 2, playerSpeed * 2));
             }
         }
 
