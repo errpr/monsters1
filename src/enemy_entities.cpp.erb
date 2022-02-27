@@ -1,0 +1,57 @@
+<%
+enemy_entities = {
+    name: "EnemyEntities",
+    members: [
+        { type: "int *" , name: "enemyInfoId" },
+        { type: "bool *" , name: "alive" },
+        { type: "Vector2 *" , name: "position" },
+        { type: "Vector2 *" , name: "nextPosition" },
+        { type: "Vector2 *" , name: "velocity" },
+        { type: "float *" , name: "radius" },
+        { type: "int *" , name: "hp" },
+        { type: "int *" , name: "attack" },
+        { type: "float *" , name: "speed" },
+        { type: "int *" , name: "animFrame" }
+    ]
+}
+%>
+#include <cstring>
+#include "enemy_entities.h"
+
+void copyEnemy(int srcIndex, EnemyEntities * srcEnemyEntities, int destIndex, EnemyEntities * destEnemyEntities) {
+  <% for member in enemy_entities[:members] %>
+    destEnemyEntities-><%= member[:name] %>[destIndex] = srcEnemyEntities-><%= member[:name] %>[srcIndex];
+  <% end %>
+}
+
+void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
+  <% for member in enemy_entities[:members] %>
+    auto <%= member[:name] %> = enemyEntities-><%=member[:name]%>[a];
+  <% end %>
+
+  <% for member in enemy_entities[:members] %>
+    enemyEntities-><%= member[:name] %>[a] = enemyEntities-><%= member[:name] %>[b];
+  <% end %>
+
+  <% for member in enemy_entities[:members] %>
+    enemyEntities-><%= member[:name] %>[b] = <%= member[:name] %>;
+  <% end %>
+}
+
+void swapAndClearEnemyEntities(EnemyEntities * enemyEntitiesA, EnemyEntities * enemyEntitiesB, int count) {
+  <% for member in enemy_entities[:members] %>
+    auto <%= member[:name] %> = enemyEntitiesB-><%=member[:name]%>;
+  <% end %>
+
+  <% for member in enemy_entities[:members] %>
+    enemyEntitiesB-><%= member[:name] %> = enemyEntitiesA-><%= member[:name] %>;
+  <% end %>
+
+  <% for member in enemy_entities[:members] %>
+    enemyEntitiesA-><%= member[:name] %> = <%= member[:name] %>;
+  <% end %>
+
+  <% for member in enemy_entities[:members] %>
+    memset(enemyEntitiesB-><%= member[:name] %>, 0, count * sizeof(<%= member[:type][0..-3] %>));
+  <% end %>
+}

@@ -1,13 +1,7 @@
-#include <cstdlib>
-#include "raylib.h"
-#include <raymath.h>
-#include <cstring>
-#include <assert.h>
-#include "sprite_stuff.hpp"
-#include "enemies.hpp"
-#include "keybinds.hpp"
-#include "main.hpp"
-#include "TileMap.h"
+
+//#define COLLISION_DEBUG
+//#define FLOOR_DEBUG
+//#define SORTING_DEBUG
 
 #define SCREEN_WIDTH (1280)
 #define SCREEN_HEIGHT (720)
@@ -19,9 +13,17 @@
 #define SPEED_LIMIT (SMALLEST_ENEMY_RADIUS * MAX_DELTA_TIME)
 #define FRICTION_COEFFICIENT 0.1f
 
-//#define COLLISION_DEBUG
-//#define FLOOR_DEBUG
-//#define SORTING_DEBUG
+#include <cstdlib>
+#include "raylib.h"
+#include <raymath.h>
+#include <cstring>
+#include <assert.h>
+#include "sprite_stuff.hpp"
+#include "enemies.hpp"
+#include "keybinds.hpp"
+#include "main.hpp"
+#include "TileMap.h"
+#include "enemy_entities.h"
 
 static int lastEnemyId = 0;
 
@@ -51,107 +53,6 @@ void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLoc
     enemyEntities->attack[enemyId] = enemyInfos[enemyInfoId].attack;
     enemyEntities->speed[enemyId] = speed;
     enemyEntities->animFrame[enemyId] = 0;
-}
-
-void copyEnemy(int srcIndex, EnemyEntities * srcEnemyEntities, int destIndex, EnemyEntities * destEnemyEntities) {
-    destEnemyEntities->enemyInfoId[destIndex] = srcEnemyEntities->enemyInfoId[srcIndex];
-    destEnemyEntities->alive[destIndex] = srcEnemyEntities->alive[srcIndex];
-    destEnemyEntities->position[destIndex] = srcEnemyEntities->position[srcIndex];
-    destEnemyEntities->nextPosition[destIndex] = srcEnemyEntities->nextPosition[srcIndex];
-    destEnemyEntities->velocity[destIndex] = srcEnemyEntities->velocity[srcIndex];
-    destEnemyEntities->radius[destIndex] = srcEnemyEntities->radius[srcIndex];
-    destEnemyEntities->hp[destIndex] = srcEnemyEntities->hp[srcIndex];
-    destEnemyEntities->attack[destIndex] = srcEnemyEntities->attack[srcIndex];
-    destEnemyEntities->speed[destIndex] = srcEnemyEntities->speed[srcIndex];
-    destEnemyEntities->animFrame[destIndex] = srcEnemyEntities->animFrame[srcIndex];
-}
-
-void swapEnemy(int a, int b, EnemyEntities * enemyEntities) {
-    // copy a into stack
-    auto enemyInfoId = enemyEntities->enemyInfoId[a];
-    auto alive = enemyEntities->alive[a];
-    auto position = enemyEntities->position[a];
-    auto nextPosition = enemyEntities->nextPosition[a];
-    auto momentum = enemyEntities->velocity[a];
-    auto radius = enemyEntities->radius[a];
-    auto hp = enemyEntities->hp[a];
-    auto attack = enemyEntities->attack[a];
-    auto speed = enemyEntities->speed[a];
-    auto animFrame = enemyEntities->animFrame[a];
-
-    // b to a
-    enemyEntities->enemyInfoId[a] = enemyEntities->enemyInfoId[b];
-    enemyEntities->alive[a] = enemyEntities->alive[b];
-    enemyEntities->position[a] = enemyEntities->position[b];
-    enemyEntities->nextPosition[a] = enemyEntities->nextPosition[b];
-    enemyEntities->velocity[a] = enemyEntities->velocity[b];
-    enemyEntities->radius[a] = enemyEntities->radius[b];
-    enemyEntities->hp[a] = enemyEntities->hp[b];
-    enemyEntities->attack[a] = enemyEntities->attack[b];
-    enemyEntities->speed[a] = enemyEntities->speed[b];
-    enemyEntities->animFrame[a] = enemyEntities->animFrame[b];
-
-    // a to b
-    enemyEntities->enemyInfoId[b] = enemyInfoId;
-    enemyEntities->alive[b] = alive;
-    enemyEntities->position[b] = position;
-    enemyEntities->nextPosition[b] = nextPosition;
-    enemyEntities->velocity[b] = momentum;
-    enemyEntities->radius[b] = radius;
-    enemyEntities->hp[b] = hp;
-    enemyEntities->attack[b] = attack;
-    enemyEntities->speed[b] = speed;
-    enemyEntities->animFrame[b] = animFrame;
-}
-
-void swapAndClearEnemyEntities(EnemyEntities * enemyEntities, EnemyEntities * enemyEntitiesSorted) {
-    // copy pointers onto stack
-    auto enemyInfoId = enemyEntitiesSorted->enemyInfoId;
-    auto alive = enemyEntitiesSorted->alive;
-    auto position = enemyEntitiesSorted->position;
-    auto nextPosition = enemyEntitiesSorted->nextPosition;
-    auto velocity = enemyEntitiesSorted->velocity;
-    auto size = enemyEntitiesSorted->radius;
-    auto hp = enemyEntitiesSorted->hp;
-    auto attack = enemyEntitiesSorted->attack;
-    auto speed = enemyEntitiesSorted->speed;
-    auto animFrame = enemyEntitiesSorted->animFrame;
-
-    // b to a
-    enemyEntitiesSorted->enemyInfoId = enemyEntities->enemyInfoId;
-    enemyEntitiesSorted->alive = enemyEntities->alive;
-    enemyEntitiesSorted->position = enemyEntities->position;
-    enemyEntitiesSorted->nextPosition = enemyEntities->nextPosition;
-    enemyEntitiesSorted->velocity = enemyEntities->velocity;
-    enemyEntitiesSorted->radius = enemyEntities->radius;
-    enemyEntitiesSorted->hp = enemyEntities->hp;
-    enemyEntitiesSorted->attack = enemyEntities->attack;
-    enemyEntitiesSorted->speed = enemyEntities->speed;
-    enemyEntitiesSorted->animFrame = enemyEntities->animFrame;
-
-    // a to b
-    enemyEntities->enemyInfoId = enemyInfoId;
-    enemyEntities->alive = alive;
-    enemyEntities->position = position;
-    enemyEntities->nextPosition = nextPosition;
-    enemyEntities->velocity = velocity;
-    enemyEntities->radius = size;
-    enemyEntities->hp = hp;
-    enemyEntities->attack = attack;
-    enemyEntities->speed = speed;
-    enemyEntities->animFrame = animFrame;
-
-    // clear to 0
-    memset(enemyEntitiesSorted->enemyInfoId, 0, MAX_ENEMY_COUNT * sizeof(int));
-    memset(enemyEntitiesSorted->alive, 0, MAX_ENEMY_COUNT * sizeof(bool));
-    memset(enemyEntitiesSorted->position, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
-    memset(enemyEntitiesSorted->nextPosition, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
-    memset(enemyEntitiesSorted->velocity, 0, MAX_ENEMY_COUNT * sizeof(Vector2));
-    memset(enemyEntitiesSorted->radius, 0, MAX_ENEMY_COUNT * sizeof(float));
-    memset(enemyEntitiesSorted->hp, 0, MAX_ENEMY_COUNT * sizeof(int));
-    memset(enemyEntitiesSorted->attack, 0, MAX_ENEMY_COUNT * sizeof(int));
-    memset(enemyEntitiesSorted->speed, 0, MAX_ENEMY_COUNT * sizeof(float));
-    memset(enemyEntitiesSorted->animFrame, 0, MAX_ENEMY_COUNT * sizeof(int));
 }
 
 void updateCamera(Camera2D *camera, Vector2 playerPos, int width, int height)
@@ -415,7 +316,7 @@ int main(void)
                 }
             }
             if (!blocked) {
-                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(playerSpeed / 2, playerSpeed * 2));
+                spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(playerSpeed / 2, playerSpeed));
             }
         }
 
@@ -447,7 +348,7 @@ int main(void)
 
                 sortedIndex++;
             }
-            swapAndClearEnemyEntities(&enemyEntities, &enemyEntitiesSorted);
+            swapAndClearEnemyEntities(&enemyEntities, &enemyEntitiesSorted, MAX_ENEMY_COUNT);
             lastEnemyId = sortedIndex;
         }
 
@@ -504,7 +405,14 @@ int main(void)
         BeginMode2D(camera);
 
         // draw floor
-        Rectangle floorSource = { floor_1.x, floor_1.y, floor_1.width, floor_1.height };
+        Rectangle floorSource[] = {
+                {floor_1.x, floor_1.y, floor_1.width, floor_1.height},
+                {floor_2.x, floor_2.y, floor_2.width, floor_2.height},
+                {floor_3.x, floor_3.y, floor_3.width, floor_3.height},
+                {floor_4.x, floor_4.y, floor_4.width, floor_4.height},
+                {floor_5.x, floor_5.y, floor_5.width, floor_5.height},
+                {floor_6.x, floor_6.y, floor_6.width, floor_6.height},
+        };
         auto floorTileHeight = tileMap->tileHeight;
         auto floorTileWidth = tileMap->tileWidth;
 
@@ -521,7 +429,7 @@ int main(void)
                 if (tileInfo.tileType == 0) {
                     DrawRectangleRec(quad, BLACK);
                 } else {
-                    DrawTexturePro(texture, floorSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
+                    DrawTexturePro(texture, floorSource[tileInfo.tileType - 1], quad, {0.0f, 0.0f}, 0.0f, WHITE);
                 }
             }
         }

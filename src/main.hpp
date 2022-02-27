@@ -1,17 +1,5 @@
 
-struct EnemyEntities {
-    int * enemyInfoId;
-    bool * alive;
-    Vector2 * position;
-    Vector2 * nextPosition;
-    Vector2 * velocity;
-    float * radius;
-    int * hp;
-    int * attack;
-    float * speed;
-    int * animFrame;
-};
-
+#ifdef COLLISION_DEBUG
 struct Collision {
     float angle;
     Vector2 position1;
@@ -21,3 +9,4 @@ struct Collision {
     float size2;
     float correctionDistance;
 };
+#endif

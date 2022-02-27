@@ -1,0 +1,28 @@
+<%
+enemy_entities = {
+    name: "EnemyEntities",
+    members: [
+        { type: "int *" , name: "enemyInfoId" },
+        { type: "bool *" , name: "alive" },
+        { type: "Vector2 *" , name: "position" },
+        { type: "Vector2 *" , name: "nextPosition" },
+        { type: "Vector2 *" , name: "velocity" },
+        { type: "float *" , name: "radius" },
+        { type: "int *" , name: "hp" },
+        { type: "int *" , name: "attack" },
+        { type: "float *" , name: "speed" },
+        { type: "int *" , name: "animFrame" }
+    ]
+}
+%>
+#include "raylib.h"
+
+struct EnemyEntities {
+  <% for member in enemy_entities[:members] %>
+    <%= member[:type] %> <%= member[:name] %>;
+  <% end %>
+};
+
+void copyEnemy(int srcIndex, EnemyEntities * srcEnemyEntities, int destIndex, EnemyEntities * destEnemyEntities);
+void swapEnemy(int a, int b, EnemyEntities * enemyEntities);
+void swapAndClearEnemyEntities(EnemyEntities * enemyEntitiesA, EnemyEntities * enemyEntitiesB, int count);
