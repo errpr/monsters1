@@ -99,6 +99,18 @@ int main(void)
     float spawnThreshold = 0.01f;
     double nextSpawnTime = GetTime() + spawnThreshold;
 
+    float swordSlashRate = 1.0f;
+    double swordSlashTime = GetTime() + swordSlashRate;
+    bool swordActive = false;
+    bool swordRight = false;
+    double swordLeftStartTime = 0.0f;
+    double swordRightStartTime = 0.0f;
+    float swordLingerTime = 0.25f;
+    Vector2 swordTopLeftPos = {0};
+    float swordWidth = 60.0f;
+    float swordHeight = 20.0f;
+    int swordDamage = 10;
+
     EnemyEntities enemyEntities = {
             (int *)calloc(MAX_ENEMY_COUNT, sizeof(int)),
             (bool *)calloc(MAX_ENEMY_COUNT, sizeof(bool)),
@@ -297,6 +309,51 @@ int main(void)
             enemyEntities.nextPosition = tmp;
         }
 
+        // update bullets / weapons (kill enemies)
+        if (time > swordSlashTime) {
+            swordSlashTime += swordSlashRate;
+            swordActive = true;
+            swordLeftStartTime = time;
+            swordRightStartTime = time + swordLingerTime;
+        }
+
+        if (swordActive) {
+            // end swording if past its time
+            if (swordRightStartTime + swordLingerTime < time) {
+                swordActive = false;
+                swordRight = false;
+            } else if (time > swordRightStartTime) { // swing right
+                swordRight = true;
+                swordTopLeftPos = Vector2Add(playerPos, {playerRadius, 0});
+            } else { // swing left
+                swordTopLeftPos = Vector2Add(playerPos, {-playerRadius - swordWidth, 0});
+            }
+
+            if (swordActive) {
+                Vector2 swordBottomRight = Vector2Add(swordTopLeftPos, {swordWidth, swordHeight});
+                for (int i = 0; i < lastEnemyId; i++) {
+                    if (!enemyEntities.alive[i]) continue;
+
+                    Vector2 pos = enemyEntities.position[i];
+                    float radius = enemyEntities.radius[i];
+
+                    if (pos.y < swordTopLeftPos.y - radius)
+                        continue;
+                    if (pos.y > swordBottomRight.y + radius)
+                        continue;
+                    if (pos.x < swordTopLeftPos.x - radius)
+                        continue;
+                    if (pos.x > swordBottomRight.x + radius)
+                        continue;
+
+                    enemyEntities.hp[i] -= swordDamage;
+                    if (enemyEntities.hp[i] <= 0) {
+                        enemyEntities.alive[i] = false;
+                    }
+                }
+            }
+        }
+
         // spawn new enemies
         if (time > nextSpawnTime) {
             nextSpawnTime += spawnThreshold;
@@ -319,9 +376,6 @@ int main(void)
                 spawnEnemy(GetRandomValue(0,1), &enemyEntities, spawnLocation, size, (float)GetRandomValue(playerSpeed / 2, playerSpeed));
             }
         }
-
-        // update bullets / weapons (kill enemies)
-
 
         // sort enemies by Y value again
         {
@@ -513,6 +567,16 @@ int main(void)
         }
 
         // draw bullets / weapons
+        {
+            if (swordActive) {
+                Rectangle swordRect = {0};
+                swordRect.x = swordTopLeftPos.x;
+                swordRect.y = swordTopLeftPos.y;
+                swordRect.width = swordWidth;
+                swordRect.height = swordHeight;
+                DrawRectangleRec(swordRect, WHITE);
+            }
+        }
 
         EndMode2D();
 
