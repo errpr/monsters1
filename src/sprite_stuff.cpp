@@ -1,11 +1,8 @@
+//
+// Created by steven on 3/6/2022.
+//
 
-struct AnimationInfo {
-    float x;
-    float y;
-    float width;
-    float height;
-    int frames;
-};
+#include "sprite_stuff.h"
 
 AnimationInfo wall_top_left = { 16, 0, 16, 16, 1 };
 AnimationInfo wall_top_mid = { 32, 0, 16, 16, 1 };

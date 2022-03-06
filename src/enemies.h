@@ -1,3 +1,9 @@
+#ifndef MONSTERS_ENEMIES_H
+#define MONSTERS_ENEMIES_H
+
+#include <raylib.h>
+#include "sprite_stuff.h"
+
 #define ANIMRECT(animationName) \
         {animationName.x, animationName.y, animationName.width, animationName.height}, \
         animationName.frames,\
@@ -10,21 +16,8 @@ struct EnemyInfo {
     int lootValue;
 };
 
-EnemyInfo enemy_skeleton = {
-    ANIMRECT(skelet_run_anim)
-    1,
-    1,
-    1
-};
+extern EnemyInfo enemy_skeleton;
+extern EnemyInfo enemy_orc;
+extern EnemyInfo enemyInfos[];
 
-EnemyInfo enemy_orc {
-    ANIMRECT(orc_warrior_run_anim)
-    2,
-    2,
-    2
-};
-
-EnemyInfo enemyInfos[] = {
-        enemy_skeleton,
-        enemy_orc
-};
+#endif //MONSTERS_ENEMIES_H

@@ -18,20 +18,21 @@
 #include <raymath.h>
 #include <cstring>
 #include <assert.h>
-#include "sprite_stuff.hpp"
-#include "enemies.hpp"
+#include "sprite_stuff.h"
+#include "enemies.h"
 #include "keybinds.hpp"
-#include "main.hpp"
+#include "main.h"
 #include "TileMap.h"
 #include "enemy_entities.h"
+#include "render.h"
 
-static int lastEnemyId = 0;
+static int lastEnemyIndex = 0;
 
 int GetNewEnemyId() {
-    if (lastEnemyId >= MAX_ENEMY_COUNT) {
-        lastEnemyId = 0;
+    if (lastEnemyIndex >= MAX_ENEMY_COUNT) {
+        lastEnemyIndex = 0;
     }
-    return lastEnemyId++;
+    return lastEnemyIndex++;
 }
 
 static float degrees = 230.0f;
@@ -53,29 +54,6 @@ void spawnEnemy(int enemyInfoId, EnemyEntities * enemyEntities, Vector2 spawnLoc
     enemyEntities->attack[enemyId] = enemyInfos[enemyInfoId].attack;
     enemyEntities->speed[enemyId] = speed;
     enemyEntities->animFrame[enemyId] = 0;
-}
-
-void updateCamera(Camera2D *camera, Vector2 playerPos, int width, int height)
-{
-    static Vector2 bbox = { 0.15f, 0.15f };
-
-    Vector2 bboxWorldMin = GetScreenToWorld2D({ (1 - bbox.x)*0.5f*width, (1 - bbox.y)*0.5f*height }, *camera);
-    Vector2 bboxWorldMax = GetScreenToWorld2D({ (1 + bbox.x)*0.5f*width, (1 + bbox.y)*0.5f*height }, *camera);
-    camera->offset = { (1 - bbox.x)*0.5f * width, (1 - bbox.y)*0.5f*height };
-
-    if (playerPos.x < bboxWorldMin.x) camera->target.x = playerPos.x;
-    if (playerPos.y < bboxWorldMin.y) camera->target.y = playerPos.y;
-    if (playerPos.x > bboxWorldMax.x) camera->target.x = bboxWorldMin.x + (playerPos.x - bboxWorldMax.x);
-    if (playerPos.y > bboxWorldMax.y) camera->target.y = bboxWorldMin.y + (playerPos.y - bboxWorldMax.y);
-}
-
-Rectangle circleToSquare(Vector2 circlePos, float radius, float scale) {
-    Rectangle result = {};
-    result.x = circlePos.x - (radius * scale);
-    result.y = circlePos.y - (radius * scale);
-    result.width = (radius * scale) * 2;
-    result.height = (radius * scale) * 2;
-    return result;
 }
 
 int main(void)
@@ -147,12 +125,6 @@ int main(void)
     float maxPlayerHp = 100.0f;
     int playerAnimationFrame = 0;
 
-    Camera2D camera = { 0 };
-    camera.target = playerPos;
-    camera.offset = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
-    camera.rotation = 0.0f;
-    camera.zoom = 1.0f;
-
 #ifdef SORTING_DEBUG
     int highlightedMonsterIndex = 0;
 #endif
@@ -166,6 +138,21 @@ int main(void)
     bool playerMovedThisFrame = false;
     float speedScale = 1.0f;
     int targetFps = 60;
+
+    Gamestate  * gamestate = (Gamestate *)calloc(1, sizeof(Gamestate));
+    gamestate->enemyPosition = (Vector2 *)calloc(MAX_ENEMY_COUNT, sizeof(Vector2));
+    gamestate->enemyRadius = (float *)calloc(MAX_ENEMY_COUNT, sizeof(float));
+    gamestate->enemyInfoId = (int *)calloc(MAX_ENEMY_COUNT, sizeof(int));
+    gamestate->animFrame = (int *)calloc(MAX_ENEMY_COUNT, sizeof(int));
+    gamestate->camera = {
+            { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f },
+            playerPos,
+            0.0f,
+            1.0f
+    };
+    gamestate->screenHeight = SCREEN_HEIGHT;
+    gamestate->screenWidth = SCREEN_WIDTH;
+
 
     while (!WindowShouldClose())
     {
@@ -228,7 +215,7 @@ int main(void)
         //
 
         // update velocity / apply friction / move
-        for (int i = 0; i < lastEnemyId; i++) {
+        for (int i = 0; i < lastEnemyIndex; i++) {
             Vector2 towardsPlayer = Vector2Normalize(Vector2Subtract(playerPos, enemyEntities.position[i]));
             Vector2 prefrictionVelocity = Vector2Add(enemyEntities.velocity[i], Vector2Scale(towardsPlayer, enemyEntities.speed[i] * dt));
             Vector2 frictionDirection = Vector2Negate(Vector2Normalize(prefrictionVelocity));
@@ -246,7 +233,7 @@ int main(void)
         {
             float previousY = -INFINITY;
             int sortedIndex = 0;
-            for (int i = 0; i < lastEnemyId; i++) {
+            for (int i = 0; i < lastEnemyIndex; i++) {
                 float y = enemyEntities.nextPosition[i].y;
 
                 copyEnemy(i, &enemyEntities, sortedIndex, &enemyEntities);
@@ -269,7 +256,7 @@ int main(void)
 
 
         // check for collisions
-        for (int i = 0; i < lastEnemyId; i++) {
+        for (int i = 0; i < lastEnemyIndex; i++) {
             Vector2 nextPos = enemyEntities.nextPosition[i];
             float radius = enemyEntities.radius[i];
             int minIndex = 0;
@@ -331,7 +318,7 @@ int main(void)
 
             if (swordActive) {
                 Vector2 swordBottomRight = Vector2Add(swordTopLeftPos, {swordWidth, swordHeight});
-                for (int i = 0; i < lastEnemyId; i++) {
+                for (int i = 0; i < lastEnemyIndex; i++) {
                     if (!enemyEntities.alive[i]) continue;
 
                     Vector2 pos = enemyEntities.position[i];
@@ -403,7 +390,7 @@ int main(void)
                 sortedIndex++;
             }
             swapAndClearEnemyEntities(&enemyEntities, &enemyEntitiesSorted, MAX_ENEMY_COUNT);
-            lastEnemyId = sortedIndex;
+            lastEnemyIndex = sortedIndex;
         }
 
         // update player
@@ -429,7 +416,7 @@ int main(void)
         }
 
         // collide with enemies (take damage)
-        for (int i = 0; i < lastEnemyId; i++) {
+        for (int i = 0; i < lastEnemyIndex; i++) {
             if (enemyEntities.position[i].y < playerPos.y - MAX_COLLISION_CHECK_DISTANCE) continue;
             if (enemyEntities.position[i].y > playerPos.y + MAX_COLLISION_CHECK_DISTANCE) continue;
             float distance = Vector2Distance(enemyEntities.position[i], playerPos);
@@ -450,145 +437,25 @@ int main(void)
         //
         draw:
 
-        updateCamera(&camera, playerPos, SCREEN_WIDTH, SCREEN_HEIGHT);
+        gamestate->animDoNextFrame = animDoNextFrame;
+        gamestate->swordActive = swordActive;
+        gamestate->swordTopLeftPos = swordTopLeftPos;
+        gamestate->playerMovedThisFrame = playerMovedThisFrame;
+        gamestate->playerMovedLastFrame = playerMovedLastFrame;
+        gamestate->damageTakenThisFrame = damageTakenThisFrame;
+        gamestate->playerAnimationFrame = playerAnimationFrame;
+        gamestate->playerPos = playerPos;
+        gamestate->playerFacing = playerFacing;
+        gamestate->playerHp = playerHp;
+        gamestate->playerHpMax = maxPlayerHp;
+        gamestate->playerRadius = playerRadius;
+        gamestate->lastEnemyIndex = lastEnemyIndex;
+        memcpy(gamestate->enemyPosition, enemyEntities.position, MAX_ENEMY_COUNT);
+        memcpy(gamestate->enemyRadius, enemyEntities.radius, MAX_ENEMY_COUNT);
+        memcpy(gamestate->enemyInfoId, enemyEntities.enemyInfoId, MAX_ENEMY_COUNT);
+        memcpy(gamestate->animFrame, enemyEntities.animFrame, MAX_ENEMY_COUNT);
 
-        BeginDrawing();
-
-        ClearBackground(GRAY);
-
-        BeginMode2D(camera);
-
-        // draw floor
-        Rectangle floorSource[] = {
-                {floor_1.x, floor_1.y, floor_1.width, floor_1.height},
-                {floor_2.x, floor_2.y, floor_2.width, floor_2.height},
-                {floor_3.x, floor_3.y, floor_3.width, floor_3.height},
-                {floor_4.x, floor_4.y, floor_4.width, floor_4.height},
-                {floor_5.x, floor_5.y, floor_5.width, floor_5.height},
-                {floor_6.x, floor_6.y, floor_6.width, floor_6.height},
-        };
-        auto floorTileHeight = tileMap->tileHeight;
-        auto floorTileWidth = tileMap->tileWidth;
-
-        Vector2 beginPosition = GetScreenToWorld2D({0.0f - floorTileWidth, 0.0f - floorTileHeight}, camera);
-        Vector2 endPosition = GetScreenToWorld2D({SCREEN_WIDTH + (float)floorTileWidth, SCREEN_HEIGHT + (float)floorTileHeight}, camera);
-        for (float y = beginPosition.y; y < endPosition.y; y += floorTileHeight) {
-            for (float x = beginPosition.x; x < endPosition.x; x += floorTileWidth) {
-                Rectangle quad = {};
-                TileInfo tileInfo = tileMap->getTileAtWorldCoords(x, y);
-                quad.x = tileInfo.x;
-                quad.y = tileInfo.y;
-                quad.width = floorTileWidth;
-                quad.height = floorTileHeight;
-                if (tileInfo.tileType == 0) {
-                    DrawRectangleRec(quad, BLACK);
-                } else {
-                    DrawTexturePro(texture, floorSource[tileInfo.tileType - 1], quad, {0.0f, 0.0f}, 0.0f, WHITE);
-                }
-            }
-        }
-
-        // draw enemies
-        for (int i = 0; i < lastEnemyId; i++) {
-            assert(enemyEntities.alive[i]);
-            Vector2 pos = enemyEntities.position[i];
-            float radius = enemyEntities.radius[i];
-            EnemyInfo info = enemyInfos[enemyEntities.enemyInfoId[i]];
-            Rectangle quad = circleToSquare(pos, radius, 1.25);
-            Rectangle textureSource = info.textureSource;
-            int animFrame = enemyEntities.animFrame[i];
-            if (animDoNextFrame) enemyEntities.animFrame[i] = ++animFrame;
-            textureSource.x += textureSource.width * (animFrame % info.animationFrames);
-            if (pos.x > playerPos.x) {
-                textureSource.width = -textureSource.width;
-            }
-            auto color = WHITE;
-#ifdef SORTING_DEBUG
-            if (manualStepping && highlightedMonsterIndex == i) color = RED;
-#endif
-            DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, color);
-
-#ifdef COLLISION_DEBUG
-            Color c = RED;
-            c.a = 100;
-            DrawCircle(pos.x, pos.y, radius, c);
-#endif
-        }
-
-        // draw player
-        {
-            AnimationInfo anim = knight_m_idle_anim;
-            if (playerMovedThisFrame)
-                anim = knight_m_run_anim;
-
-            if (playerMovedThisFrame && !playerMovedLastFrame)
-                playerAnimationFrame = 0;
-
-            if (!playerMovedThisFrame && playerMovedLastFrame)
-                playerAnimationFrame = 0;
-
-            if (damageTakenThisFrame) {
-                anim = knight_m_hit_anim;
-                playerAnimationFrame = 0;
-            }
-
-
-            Rectangle quad = {0};
-            float widthScale = playerRadius / anim.width;
-            float heightScale = playerRadius / anim.height;
-            // the knight has a bunch of extra pixels for height to fit his stupid hat
-            float scale = fmax(widthScale, heightScale) * 1.75;
-            quad.x = playerPos.x - ((anim.width * scale) * 0.5);
-            quad.y = playerPos.y - ((anim.height * scale) * 0.75);
-            quad.width = anim.width * scale;
-            quad.height = anim.height * scale;
-
-            Rectangle textureSource = { 0 };
-            if (animDoNextFrame) ++playerAnimationFrame;
-            textureSource.x = anim.x + (anim.width * (playerAnimationFrame % anim.frames));
-            textureSource.y = anim.y;
-            textureSource.width = anim.width;
-            textureSource.height = anim.height;
-
-            if (playerFacing.x < 0) {
-                textureSource.width = -textureSource.width;
-            }
-
-            DrawTexturePro(texture, textureSource, quad, {0.0f, 0.0f}, 0.0f, WHITE);
-
-            Rectangle hpBar =  {quad.x, quad.y + quad.height, quad.width * (playerHp / maxPlayerHp), 3.0f};
-            DrawRectangleRec(hpBar, RED);
-
-#ifdef COLLISION_DEBUG
-            Color c = BLUE;
-            c.a = 100;
-            DrawCircle(playerPos.x, playerPos.y, playerRadius, c);
-#endif
-        }
-
-        // draw bullets / weapons
-        {
-            if (swordActive) {
-                Rectangle swordRect = {0};
-                swordRect.x = swordTopLeftPos.x;
-                swordRect.y = swordTopLeftPos.y;
-                swordRect.width = swordWidth;
-                swordRect.height = swordHeight;
-                DrawRectangleRec(swordRect, WHITE);
-            }
-        }
-
-        EndMode2D();
-
-#ifdef FLOOR_DEBUG
-        DrawText(TextFormat("Camera X %f Camera Y %f", camera.target.x, camera.target.y), 5, 5, 12, BLUE);
-        DrawText(TextFormat("Previous Floor X %f Previous Floor Y %f", prevFloorX, prevFloorY), 5, 20, 12, BLUE);
-        DrawText(TextFormat("New Floor X %f New Floor Y %f", floorQuad.x, floorQuad.y), 5, 35, 12, BLUE);
-        DrawText(TextFormat("Floor X dff %f Floor Y diff %f", floorQuad.x - prevFloorX, floorQuad.y - prevFloorY), 5, 50, 12, BLUE);
-        prevFloorX = floorQuad.x;
-        prevFloorY = floorQuad.y;
-#endif
-        EndDrawing();
+        render(gamestate, tileMap, &texture);
     }
 
     CloseWindow();
